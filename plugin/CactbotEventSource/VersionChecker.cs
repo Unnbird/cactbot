@@ -111,6 +111,7 @@ namespace Cactbot {
         var opcode_manager_type = mach.GetType("Machina.FFXIV.Headers.Opcodes.OpcodeManager");
         var opcode_manager = opcode_manager_type.GetProperty("Instance").GetValue(null);
         var machina_region = opcode_manager_type.GetProperty("GameRegion").GetValue(opcode_manager).ToString();
+        machina_region = "TraditionalChinese";
         switch (machina_region) {
           case "Chinese":
             return GameRegion.Chinese;
