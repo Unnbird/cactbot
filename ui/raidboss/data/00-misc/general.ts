@@ -262,6 +262,58 @@ const triggerSet: TriggerSet<Data> = {
       },
     },
     {
+      id: 'General Addle',
+      comment: {
+        cn: '仅在自身或团队成员释放"昏乱"时触发。',
+        ko: '본인 또는 파티원이 쇠약을 사용하였을 때 작동합니다.',
+        tc: '僅在自身或團隊成員釋放"昏亂"時觸發。',
+      },
+      type: 'Ability',
+      netRegex: { id: '1D88' },
+      condition: (data, matches) => {
+        return matches.source === data.me || data.party.inAlliance(matches.source);
+      },
+      infoText: (data, matches, output) =>
+        output.text!({ player: data.party.member(matches.source) }),
+      outputStrings: {
+        text: {
+          en: 'Addle: ${player}',
+          de: 'Stumpfsinn: ${player}',
+          fr: 'Embrouillement : ${player}',
+          ja: 'アドル: ${player}',
+          cn: '昏乱: ${player}',
+          ko: '쇠약: ${player}',
+          tc: '昏亂: ${player}',
+        },
+      },
+    },
+    {
+      id: 'General Feint',
+      comment: {
+        cn: '仅在自身或团队成员释放"牵制"时触发。',
+        ko: '본인 또는 파티원이 견제를 사용하였을 때 작동합니다.',
+        tc: '僅在自身或團隊成員釋放"牽制"時觸發。',
+      },
+      type: 'Ability',
+      netRegex: { id: '1D7D' },
+      condition: (data, matches) => {
+        return matches.source === data.me || data.party.inAlliance(matches.source);
+      },
+      infoText: (data, matches, output) =>
+        output.text!({ player: data.party.member(matches.source) }),
+      outputStrings: {
+        text: {
+          en: 'Feint: ${player}',
+          de: 'Zermürben: ${player}',
+          fr: 'Restreinte : ${player}',
+          ja: '牽制: ${player}',
+          cn: '牵制: ${player}',
+          ko: '견제: ${player}',
+          tc: '牽制: ${player}',
+        },
+      },
+    },
+    {
       // 0039 is the system message channel, when the current player commences a ready check,
       // the message is sent to this channel; when a ready check is invoked by others, then it
       // would be sent to the 0239 channel.  (Sometimes this is also sent to 0139, unknown why?)
