@@ -586,33 +586,27 @@ const triggerSet: TriggerSet<Data> = {
         }
 
         if (iceciclePos.y > 110.0) {
-          if(iceciclePos.x > 90 && iceciclePos.x < 92){
-            return output.east_up_1!();
+          if (iceciclePos.x > 90 && iceciclePos.x < 92) {
+            return output.eastUp1!();
+          } else if (iceciclePos.x > 96 && iceciclePos.x < 98) {
+            return output.eastDown1!();
+          } else if (iceciclePos.x > 102 && iceciclePos.x < 104) {
+            return output.westDown1!();
+          } else if (iceciclePos.x > 108 && iceciclePos.x < 110) {
+            return output.westUp1!();
           }
-          else if(iceciclePos.x > 96 && iceciclePos.x < 98){
-            return output.east_down_1!();
-          }
-          else if(iceciclePos.x > 102 && iceciclePos.x < 104){
-            return output.west_down_1!();
-          }
-          else if(iceciclePos.x > 108 && iceciclePos.x < 110){
-            return output.west_up_1!();
-          }
-        }
-        else if(iceciclePos.y < 110.0){
-          if(iceciclePos.x > 100.0){
-            if(iceciclePos.y > 100.0){
-              return output.west_up_2!();
+        } else if (iceciclePos.y < 110.0) {
+          if (iceciclePos.x > 100.0) {
+            if (iceciclePos.y > 100.0) {
+              return output.westUp2!();
+            } else if (iceciclePos.y < 100.0) {
+              return output.westDown2!();
             }
-            else if(iceciclePos.y < 100.0){
-              return output.west_down_2!();
-            }
-          }else if(iceciclePos.x < 100.0){
-            if(iceciclePos.y > 100.0){
-              return output.east_up_2!();
-            }
-            else if(iceciclePos.y < 100.0){
-              return output.east_down_2!();
+          } else if (iceciclePos.x < 100.0) {
+            if (iceciclePos.y > 100.0) {
+              return output.eastUp2!();
+            } else if (iceciclePos.y < 100.0) {
+              return output.eastDown2!();
             }
           }
         }
@@ -628,7 +622,7 @@ const triggerSet: TriggerSet<Data> = {
           ko: '??? 산개, 선 늘이기',
           tc: '???分散, 拉線至變色',
         },
-        west_up_1: {
+        westUp1: {
           en: 'Spread West, stretch tethers',
           de: 'Verteilen Westen, Verbindungen lang ziehen',
           fr: 'Dispersion Est, étirez les liens',
@@ -637,7 +631,7 @@ const triggerSet: TriggerSet<Data> = {
           ko: '서쪽 산개, 선 늘이기',
           tc: '走西北橋, 站北邊內側, 拉線至變色',
         },
-        west_up_2: {
+        westUp2: {
           en: 'Spread West, stretch tethers',
           de: 'Verteilen Westen, Verbindungen lang ziehen',
           fr: 'Dispersion Est, étirez les liens',
@@ -646,7 +640,7 @@ const triggerSet: TriggerSet<Data> = {
           ko: '서쪽 산개, 선 늘이기',
           tc: '走西北橋, 站北邊外側, 拉線至變色',
         },
-        west_down_1: {
+        westDown1: {
           en: 'Spread West, stretch tethers',
           de: 'Verteilen Westen, Verbindungen lang ziehen',
           fr: 'Dispersion Est, étirez les liens',
@@ -655,7 +649,7 @@ const triggerSet: TriggerSet<Data> = {
           ko: '서쪽 산개, 선 늘이기',
           tc: '走西南橋, 站北邊外側, 拉線至變色',
         },
-        west_down_2: {
+        westDown2: {
           en: 'Spread West, stretch tethers',
           de: 'Verteilen Westen, Verbindungen lang ziehen',
           fr: 'Dispersion Est, étirez les liens',
@@ -664,7 +658,7 @@ const triggerSet: TriggerSet<Data> = {
           ko: '서쪽 산개, 선 늘이기',
           tc: '走西南橋, 站南邊外側, 拉線至變色',
         },
-        east_up_1: {
+        eastUp1: {
           en: 'Spread East, stretch tethers',
           de: 'Verteilen Osten, Verbindungen lang ziehen',
           fr: 'Dispersion Ouest, étirez les liens',
@@ -673,7 +667,7 @@ const triggerSet: TriggerSet<Data> = {
           ko: '동쪽 산개, 선 늘이기',
           tc: '走東北橋, 站北邊內側, 拉線至變色',
         },
-        east_up_2: {
+        eastUp2: {
           en: 'Spread East, stretch tethers',
           de: 'Verteilen Osten, Verbindungen lang ziehen',
           fr: 'Dispersion Ouest, étirez les liens',
@@ -682,7 +676,7 @@ const triggerSet: TriggerSet<Data> = {
           ko: '동쪽 산개, 선 늘이기',
           tc: '走東北橋, 站北邊外側, 拉線至變色',
         },
-        east_down_1: {
+        eastDown1: {
           en: 'Spread East, stretch tethers',
           de: 'Verteilen Osten, Verbindungen lang ziehen',
           fr: 'Dispersion Ouest, étirez les liens',
@@ -691,7 +685,7 @@ const triggerSet: TriggerSet<Data> = {
           ko: '동쪽 산개, 선 늘이기',
           tc: '走東南橋, 站北邊外側, 拉線至變色',
         },
-        east_down_2: {
+        eastDown2: {
           en: 'Spread East, stretch tethers',
           de: 'Verteilen Osten, Verbindungen lang ziehen',
           fr: 'Dispersion Ouest, étirez les liens',
