@@ -585,11 +585,32 @@ const triggerSet: TriggerSet<Data> = {
           return output.unknown!();
         }
 
-        if (iceciclePos.x < 100.0) {
-          return output.east!();
+        if (iceciclePos.y > 110.0) {
+          if (iceciclePos.x > 90 && iceciclePos.x < 92) {
+            return output.eastUp1!();
+          } else if (iceciclePos.x > 96 && iceciclePos.x < 98) {
+            return output.eastDown1!();
+          } else if (iceciclePos.x > 102 && iceciclePos.x < 104) {
+            return output.westDown1!();
+          } else if (iceciclePos.x > 108 && iceciclePos.x < 110) {
+            return output.westUp1!();
+          }
+        } else if (iceciclePos.y < 110.0) {
+          if (iceciclePos.x > 100.0) {
+            if (iceciclePos.y > 100.0) {
+              return output.westUp2!();
+            } else if (iceciclePos.y < 100.0) {
+              return output.westDown2!();
+            }
+          } else if (iceciclePos.x < 100.0) {
+            if (iceciclePos.y > 100.0) {
+              return output.eastUp2!();
+            } else if (iceciclePos.y < 100.0) {
+              return output.eastDown2!();
+            }
+          }
         }
-
-        return output.west!();
+        return output.unknown!();
       },
       outputStrings: {
         unknown: {
@@ -601,23 +622,77 @@ const triggerSet: TriggerSet<Data> = {
           ko: '??? 산개, 선 늘이기',
           tc: '???分散, 拉線至變色',
         },
-        west: {
+        westUp1: {
           en: 'Spread West, stretch tethers',
           de: 'Verteilen Westen, Verbindungen lang ziehen',
           fr: 'Dispersion Est, étirez les liens',
           ja: '西側にさんかいして、線をのばす',
           cn: '左分散, 拉线至变色',
           ko: '서쪽 산개, 선 늘이기',
-          tc: '西分散, 拉線至變色',
+          tc: '走西北橋, 站北邊內側, 拉線至變色',
         },
-        east: {
+        westUp2: {
+          en: 'Spread West, stretch tethers',
+          de: 'Verteilen Westen, Verbindungen lang ziehen',
+          fr: 'Dispersion Est, étirez les liens',
+          ja: '西側にさんかいして、線をのばす',
+          cn: '左分散, 拉线至变色',
+          ko: '서쪽 산개, 선 늘이기',
+          tc: '走西北橋, 站北邊外側, 拉線至變色',
+        },
+        westDown1: {
+          en: 'Spread West, stretch tethers',
+          de: 'Verteilen Westen, Verbindungen lang ziehen',
+          fr: 'Dispersion Est, étirez les liens',
+          ja: '西側にさんかいして、線をのばす',
+          cn: '左分散, 拉线至变色',
+          ko: '서쪽 산개, 선 늘이기',
+          tc: '走西南橋, 站北邊外側, 拉線至變色',
+        },
+        westDown2: {
+          en: 'Spread West, stretch tethers',
+          de: 'Verteilen Westen, Verbindungen lang ziehen',
+          fr: 'Dispersion Est, étirez les liens',
+          ja: '西側にさんかいして、線をのばす',
+          cn: '左分散, 拉线至变色',
+          ko: '서쪽 산개, 선 늘이기',
+          tc: '走西南橋, 站南邊外側, 拉線至變色',
+        },
+        eastUp1: {
           en: 'Spread East, stretch tethers',
           de: 'Verteilen Osten, Verbindungen lang ziehen',
           fr: 'Dispersion Ouest, étirez les liens',
           ja: '東側にさんかいして、線をのばす',
           cn: '右分散, 拉线至变色',
           ko: '동쪽 산개, 선 늘이기',
-          tc: '東分散, 拉線至變色',
+          tc: '走東北橋, 站北邊內側, 拉線至變色',
+        },
+        eastUp2: {
+          en: 'Spread East, stretch tethers',
+          de: 'Verteilen Osten, Verbindungen lang ziehen',
+          fr: 'Dispersion Ouest, étirez les liens',
+          ja: '東側にさんかいして、線をのばす',
+          cn: '右分散, 拉线至变色',
+          ko: '동쪽 산개, 선 늘이기',
+          tc: '走東北橋, 站北邊外側, 拉線至變色',
+        },
+        eastDown1: {
+          en: 'Spread East, stretch tethers',
+          de: 'Verteilen Osten, Verbindungen lang ziehen',
+          fr: 'Dispersion Ouest, étirez les liens',
+          ja: '東側にさんかいして、線をのばす',
+          cn: '右分散, 拉线至变色',
+          ko: '동쪽 산개, 선 늘이기',
+          tc: '走東南橋, 站北邊外側, 拉線至變色',
+        },
+        eastDown2: {
+          en: 'Spread East, stretch tethers',
+          de: 'Verteilen Osten, Verbindungen lang ziehen',
+          fr: 'Dispersion Ouest, étirez les liens',
+          ja: '東側にさんかいして、線をのばす',
+          cn: '右分散, 拉线至变色',
+          ko: '동쪽 산개, 선 늘이기',
+          tc: '走東南橋, 站南邊外側, 拉線至變色',
         },
       },
     },
