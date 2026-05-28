@@ -314,6 +314,32 @@ const triggerSet: TriggerSet<Data> = {
       },
     },
     {
+      id: 'General Reprisal',
+      comment: {
+        cn: '仅在自身或团队成员释放"雪仇"时触发。',
+        ko: '본인 또는 파티원이 앙갚음을 사용하였을 때 작동합니다.',
+        tc: '僅在自身或團隊成員釋放"雪仇"時觸發。',
+      },
+      type: 'Ability',
+      netRegex: { id: '1D6F' },
+      condition: (data, matches) => {
+        return matches.source === data.me || data.party.inAlliance(matches.source);
+      },
+      infoText: (data, matches, output) =>
+        output.text!({ player: data.party.member(matches.source) }),
+      outputStrings: {
+        text: {
+          en: 'Reprisal: ${player}',
+          de: 'Repressalie: ${player}',
+          fr: 'Rétorsion : ${player}',
+          ja: 'リプライザル: ${player}',
+          cn: '雪仇: ${player}',
+          ko: '앙갚음: ${player}',
+          tc: '雪仇: ${player}',
+        },
+      },
+    },
+    {
       // 0039 is the system message channel, when the current player commences a ready check,
       // the message is sent to this channel; when a ready check is invoked by others, then it
       // would be sent to the 0239 channel.  (Sometimes this is also sent to 0139, unknown why?)
