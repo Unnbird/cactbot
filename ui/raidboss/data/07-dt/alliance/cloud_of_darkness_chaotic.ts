@@ -990,35 +990,35 @@ const triggerSet: TriggerSet<Data> = {
       },
       'replaceText': {
         '--adds untargetable--': '--小怪不可選中--', // FIXME '--小怪不可选中--'
-        'Active-pivot Particle Beam': '迴旋式波動砲', // FIXME '回旋式波动炮'
+        'Active-pivot Particle Beam': '迴旋式波動砲',
         '(?<!En)Aero IV': '超勁風',
         'Blade of Darkness': '暗之刃',
         'Break IV': '超石化',
         'Chaos-condensed Particle Beam': '凝聚式波動砲', // FIXME '凝聚式波动炮'
-        'Core-lateral Phaser': '正側跳躍波動砲', // FIXME '正侧跳跃波动炮'
-        'Curse of Darkness': '波動詛咒', // FIXME '波动诅咒'
-        'Dark Dominion': '深暗領域', // FIXME '深暗领域'
+        'Core-lateral Phaser': '正側跳躍波動砲',
+        'Curse of Darkness': '波動的詛咒',
+        'Dark Dominion': '深暗領域',
         'Dark-energy Particle Beam': '詛咒式波動砲',
-        '(?<!En)Death IV': '極死', // FIXME '极死'
+        '(?<!En)Death IV': '極死',
         'Deluge of Darkness': '暗之大氾濫',
         'Diffusive-force Particle Beam': '分散式波動砲', // FIXME '分散式波动炮'
-        'Enaero IV': '超附風', // FIXME '超附风'
-        'Endeath IV': '超附死', // FIXME '超附死'
+        'Enaero IV': '附魔超勁風',
+        'Endeath IV': '附魔極死',
         'Evaporation': '雲散', // FIXME '云散'
         'Evil Seed': '種子彈',
-        'Excruciate': '磔沙', // FIXME '磔杀'
+        'Excruciate': '磔殺',
         'Feint Particle Beam': '潛地式波動砲',
         'Flare': '火光',
-        'Flood of Darkness': '暗之氾濫', // FIXME '暗之泛滥'
-        'Ghastly Gloom': '恐懼之雲', // FIXME '恐惧之云'
+        'Flood of Darkness': '暗之氾濫',
+        'Ghastly Gloom': '恐懼之雲',
         'Grim Embrace': '陰冷擁抱',
-        'Lateral-core Phaser': '側正跳躍波動砲', // FIXME '侧正跳跃波动炮'
-        'Looming Chaos': '混沌迫近', // FIXME '混沌迫近'
+        'Lateral-core Phaser': '側正跳躍波動砲',
+        'Looming Chaos': '混沌迫近',
         '(?<! )Particle Beam': '波動爆炸',
         'Particle Concentration': '波動球',
         '(?<! )Phaser': '跳躍波動砲', // FIXME '跳跃波动炮'
         'Rapid-sequence Particle Beam': '連射式波動砲',
-        'Razing-volley Particle Beam': '齊射式波動砲', // FIXME '齐射式波动炮'
+        'Razing-volley Particle Beam': '齊射式波動砲',
         'Thorny Vine': '荊棘叢生',
         'Unholy Darkness': '黑暗神聖',
         'Vortex': '吸引',
