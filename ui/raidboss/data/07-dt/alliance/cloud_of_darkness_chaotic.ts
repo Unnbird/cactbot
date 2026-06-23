@@ -986,7 +986,7 @@ const triggerSet: TriggerSet<Data> = {
         'Cloud Of Darkness': '黑暗之雲',
         'Cloud of Darkness': '黑暗之雲',
         'Cloudlet of Darkness': '黑暗之碎雨雲',
-        'Stygian Shadow': '生於黑暗之物', // FIXME '生于黑暗之物'
+        'Stygian Shadow': '暗之淤影',
       },
       'replaceText': {
         '--adds untargetable--': '--小怪不可選中--', // FIXME '--小怪不可选中--'
