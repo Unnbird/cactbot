@@ -994,17 +994,17 @@ const triggerSet: TriggerSet<Data> = {
         '(?<!En)Aero IV': '超勁風',
         'Blade of Darkness': '暗之刃',
         'Break IV': '超石化',
-        'Chaos-condensed Particle Beam': '凝聚式波動砲', // FIXME '凝聚式波动炮'
+        'Chaos-condensed Particle Beam': '凝聚式波動砲',
         'Core-lateral Phaser': '正側跳躍波動砲',
         'Curse of Darkness': '波動的詛咒',
         'Dark Dominion': '深暗領域',
         'Dark-energy Particle Beam': '詛咒式波動砲',
         '(?<!En)Death IV': '極死',
         'Deluge of Darkness': '暗之大氾濫',
-        'Diffusive-force Particle Beam': '分散式波動砲', // FIXME '分散式波动炮'
+        'Diffusive-force Particle Beam': '分散式波動砲',
         'Enaero IV': '附魔超勁風',
         'Endeath IV': '附魔極死',
-        'Evaporation': '雲散', // FIXME '云散'
+        'Evaporation': '雲散',
         'Evil Seed': '種子彈',
         'Excruciate': '磔殺',
         'Feint Particle Beam': '潛地式波動砲',
@@ -1016,7 +1016,7 @@ const triggerSet: TriggerSet<Data> = {
         'Looming Chaos': '混沌迫近',
         '(?<! )Particle Beam': '波動爆炸',
         'Particle Concentration': '波動球',
-        '(?<! )Phaser': '跳躍波動砲', // FIXME '跳跃波动炮'
+        '(?<! )Phaser': '跳躍波動砲',
         'Rapid-sequence Particle Beam': '連射式波動砲',
         'Razing-volley Particle Beam': '齊射式波動砲',
         'Thorny Vine': '荊棘叢生',
