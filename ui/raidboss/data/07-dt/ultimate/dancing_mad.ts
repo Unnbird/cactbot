@@ -4,9 +4,10 @@ import { Responses } from '../../../../../resources/responses';
 import Util, { Directions } from '../../../../../resources/util';
 import ZoneId from '../../../../../resources/zone_id';
 import { RaidbossData } from '../../../../../types/data';
-import { OutputStrings, TriggerSet } from '../../../../../types/trigger';
+import { LocaleText, OutputStrings, TriggerSet } from '../../../../../types/trigger';
 
 // TODO: P2 Old AAAABBBB plan was found at https://raidplan.io/plan/kj2d734d36es2ugs, would like to find replacement
+// TODO: P3 Better Blackhole no-config support via debuff tracking?
 // TODO: Earlier phase tracking for P5 (counting the jumps to middle?)
 
 type Phase = 'p1' | 'p2' | 'p3' | 'p4' | 'p5';
@@ -32,6 +33,10 @@ export interface Data extends RaidbossData {
   readonly triggerSetConfig: {
     teleportent: 'clockwise' | 'filipino' | 'none';
     forsaken: 'kroxy-rinon' | 'abba' | 'bowtie' | 'none';
+    boa: 'lb3' | 'sg3k' | 'none';
+    accretion: 'line' | 'role';
+    blackHole: 'dsa' | 'sda' | 'modified' | 'none';
+    blackHoleTether: 'true' | 'clock';
   };
   // General
   phase: Phase | 'unknown';
@@ -68,6 +73,57 @@ export interface Data extends RaidbossData {
   forsakenGroupB: string[]; // List of players in Group B
   trineDirNums: number[];
   middleTrineFacing?: 'east' | 'west';
+  // Phase 3
+  heroDebuff?: 'chaos' | 'exdeath';
+  isFireShort?: boolean;
+  windCrystalNext: boolean;
+  myElement?: 'fire' | 'water';
+  myWind?: 'head' | 'tail';
+  fireElementPlayers: string[];
+  waterElementPlayers: string[];
+  fireCrystalDirNum?: number;
+  waterCrystalDirNum?: number;
+  windCrystalDirNum?: number;
+  firstBlasterHdg?: number;
+  firstBlasterDirNum?: number;
+  blasterRotation?: number;
+  kefkaId?: string;
+  inLine: { [name: string]: number };
+  firstAccretion?: string;
+  secondAccretion?: string;
+  hadAccretion: boolean;
+  blackHoleIdDirNums: { [id: string]: number };
+  blackHoleTetherDisable?: boolean;
+  kefkaTeleportDirNum?: number;
+  nothingnessTracker: number;
+  blackHoleTetherDirNums: number[];
+  isSecondPuddle: boolean;
+  knockDownTarget?: string;
+  isKnockDown2: boolean;
+  blizzardStarted: boolean;
+  // Phase 4
+  grandCrossCount: number;
+  shortShriekPlayers: string[];
+  longShriekPlayers: string[];
+  isFirstDebuffShort?: boolean;
+  shortForkedPlayers: string[];
+  longForkedPlayers: string[];
+  shortCompressedPlayers: string[];
+  longCompressedPlayers: string[];
+  firstShortBombPlayers: string[];
+  firstLongBombPlayers: string[];
+  secondShortBombPlayers: string[];
+  secondLongBombPlayers: string[];
+  areFirstDebuffsTrue?: boolean;
+  areSecondDebuffsTrue?: boolean;
+  areThirdDebuffsTrue?: boolean;
+  areFourthDebuffsTrue?: boolean;
+  isEntropyTrue?: boolean;
+  isFluidTrue?: boolean;
+  deathOrField?: 'death' | 'field';
+  wound?: 'white' | 'black';
+  isThunderChargedTrue?: boolean;
+  isBlizzardChargedTrue?: boolean;
 }
 
 const headMarkerData = {
@@ -89,117 +145,86 @@ const headMarkerData = {
   'stackPath': '02CB', // When standing in Path of Light tower, causes BAC0 Spelldriver (3-person stack)
   'conePath': '02CD', // When standing in Path of Light tower, causes BAC2 Spellwave (cone targetting nearest player)
   'spreadPath': '02CC', // When standing in Path of Light tower, causes BAC1 Spellscatter (small aoe on the player)
+  // Phase 3 Tethers
+  'exdeathTether': '0040', // Exdeath "pulls energy" from Graven Image with BNpcID 4C31 with BB12 Thunder III
+  'blackHoleTether': '0054',
+  // Phase 3 Players
+  'limitCutBlue1': '0150',
+  'limitCutRed2': '0151',
+  'limitCutBlue3': '0152',
+  'limitCutRed4': '0153',
+  'limitCutBlue5': '01B5',
+  'limitCutRed6': '01B6',
+  'limitCutBlue7': '01B7',
+  'limitCutRed8': '01B8',
+  'stompStack': '00A1',
 } as const;
 
-const mysteryMagicOutputStrings: OutputStrings = {
-  puddle: {
-    en: 'Bait Puddle',
-    de: 'Fläche ködern',
-    fr: 'Déposez',
-    ja: 'AOE誘導',
-    cn: '诱导AOE',
-    ko: '장판 유도',
-    tc: '誘導AOE',
+const mysteryMagicIceOutputStrings: OutputStrings = {
+  trueIce: {
+    en: 'Avoid Tell',
+    cn: '躲避扇形',
+    ko: '예고 피하기',
   },
+  fakeIce: {
+    en: 'In Cone',
+    cn: '进入扇形',
+    ko: '부채꼴 안으로',
+  },
+};
+
+const mysteryMagicFireOutputStrings: OutputStrings = {
   spread: Outputs.spread,
-  middle: Outputs.goIntoMiddle,
   stack: {
     en: 'Stack',
     de: 'Stacken',
     fr: 'Packez-vous',
     ja: 'スタック',
-    cn: '集合',
+    cn: '分摊',
     ko: '쉐어',
     tc: '集合',
   },
+};
+
+const mysteryMagicThunderOutputStrings: OutputStrings = {
   trueThunder: {
     en: 'Avoid Tell',
+    cn: '躲避直线',
     ko: '예고 피하기',
   },
   fakeThunder: {
     en: 'In Line',
+    cn: '进入直线',
     ko: '직선 안으로',
   },
-  trueIce: {
-    en: 'Avoid Tell',
-    ko: '예고 피하기',
-  },
-  fakeIce: {
-    en: 'In Cone',
-    ko: '부채꼴 안으로',
-  },
-  trueIcePuddle: {
-    en: '${mech1} + ${mech2} => ${mech3}',
-    ko: '${mech1} + ${mech2} => ${mech3}',
-  },
-  fakeIcePuddle: {
-    en: '${mech1} + ${mech2} => ${mech3}',
-    ko: '${mech1} + ${mech2} => ${mech3}',
-  },
-  stackTrueIce: {
-    en: '${mech} + ${ice}',
-    ko: '${mech} + ${ice}',
-  },
-  stackFakeIce: {
-    en: '${mech} + ${ice}',
-    ko: '${mech} + ${ice}',
-  },
-  spreadTrueIce: {
-    en: '${mech} + ${ice}',
-    ko: '${mech} + ${ice}',
-  },
-  spreadFakeIce: {
-    en: '${mech} + ${ice}',
-    ko: '${mech} + ${ice}',
-  },
+};
+
+const mysteryMagicIceThunderOutputStrings: OutputStrings = {
+  ...mysteryMagicIceOutputStrings,
+  ...mysteryMagicThunderOutputStrings,
   trueIceTrueThunder: {
     en: 'Avoid Tells',
+    cn: '躲避扇形+直线',
     ko: '예고 다 피하기',
   },
   fakeIceTrueThunder: {
     en: 'Cone (only)',
+    cn: '仅扇形',
     ko: '부채꼴만',
   },
   trueIceFakeThunder: {
     en: 'Line (only)',
+    cn: '仅直线',
     ko: '직선만',
   },
   fakeIceFakeThunder: {
     en: 'Cone + Line',
+    cn: '扇形+直线',
     ko: '부채꼴 + 직선',
   },
-  stackTrueThunderLook: {
-    en: '${mech} + ${thunder} + ${look}',
-    ko: '${mech} + ${thunder} + ${look}',
-  },
-  stackFakeThunderLook: {
-    en: '${mech} + ${thunder} + ${look}',
-    ko: '${mech} + ${thunder} + ${look}',
-  },
-  spreadTrueThunderLook: {
-    en: '${mech} + ${thunder} + ${look}',
-    ko: '${mech} + ${thunder} + ${look}',
-  },
-  spreadFakeThunderLook: {
-    en: '${mech} + ${thunder} + ${look}',
-    ko: '${mech} + ${thunder} + ${look}',
-  },
-  stackTrueThunder: {
-    en: '${mech} + ${thunder}',
-    ko: '${mech} + ${thunder}',
-  },
-  stackFakeThunder: {
-    en: '${mech} + ${thunder}',
-    ko: '${mech} + ${thunder}',
-  },
-  spreadTrueThunder: {
-    en: '${mech} + ${thunder}',
-    ko: '${mech} + ${thunder}',
-  },
-  spreadFakeThunder: {
-    en: '${mech} + ${thunder}',
-    ko: '${mech} + ${thunder}',
-  },
+};
+
+const mysteryMagicLookOutputStrings: OutputStrings = {
   lookAway: {
     en: 'Look Away From Statue',
     de: 'Von Statue wegschauen',
@@ -223,30 +248,37 @@ const mysteryMagicOutputStrings: OutputStrings = {
 const trapOutputStrings: OutputStrings = {
   you: {
     en: 'YOU',
+    cn: '你',
     ko: '나',
   },
   knockbackFrom1: {
     en: 'Knockback from ${players}',
+    cn: '被${players}击退',
     ko: '${players}에서 넉백',
   },
   knockbackFrom2: {
     en: 'Knockback from ${players}',
+    cn: '被${players}击退',
     ko: '${players}에서 넉백',
   },
   knockbackFrom3: {
     en: 'Knockback from ${players} => Debuffs',
+    cn: '被${players}击退 => Debuff',
     ko: '${players}에서 넉백 => 디버프',
   },
   knockbackFrom3Sleep: {
     en: 'Knockback from ${players} => Sleep',
+    cn: '被${players}击退 => 睡眠',
     ko: '${players}에서 넉백 => 수면',
   },
   knockbackFrom3Confuse: {
     en: 'Knockback from ${players} => Confuse',
+    cn: '被${players}击退 => 混乱',
     ko: '${players}에서 넉백 => 혼란',
   },
   knockbackFromLater: {
     en: 'Knockback from ${players} (later)',
+    cn: '被${players}击退 (稍后)',
     ko: '${players}에서 넉백 (나중에)',
   },
 };
@@ -322,12 +354,18 @@ const forsakenOutputStrings: OutputStrings = {
   tower: Outputs.getTowers,
   leftTower: {
     en: 'Left Tower',
+    cn: '踩左塔',
+    ko: '왼쪽 탑',
   },
   rightTower: {
     en: 'Right Tower',
+    cn: '踩右塔',
+    ko: '오른쪽 탑',
   },
   towerOrBeNear: { // Used in even towers with no strategy
     en: '${tower} / ${near}',
+    cn: '${tower} / ${near}',
+    ko: '${tower} / ${near}',
   },
   avoid: {
     en: 'Avoid towers',
@@ -335,21 +373,29 @@ const forsakenOutputStrings: OutputStrings = {
     fr: 'Évitez les tours',
     ja: '塔回避',
     cn: '远离塔',
-    ko: '기둥 피하기',
+    ko: '탑 피하기',
     tc: '遠離塔',
   },
   outOfHitbox: Outputs.outOfHitbox,
   innerHitbox: {
     en: 'Inner Hitbox',
+    cn: '目标圈内环',
+    ko: '안쪽 히트박스',
   },
   outerHitbox: {
     en: 'Outer Hitbox',
+    cn: '目标圈外环',
+    ko: '바깥쪽 히트박스',
   },
   cone: {
     en: 'Cone on YOU',
+    cn: '扇形点名',
+    ko: '나에게 부채꼴',
   },
   spread: {
     en: 'Spread on YOU',
+    cn: '分散点名',
+    ko: '나에게 산개징',
   },
   stack: Outputs.stackOnYou,
   num: {
@@ -363,6 +409,8 @@ const forsakenOutputStrings: OutputStrings = {
   },
   you: {
     en: 'YOU',
+    cn: '你',
+    ko: '나',
   },
   beNear: {
     en: 'Be Near',
@@ -379,84 +427,413 @@ const forsakenOutputStrings: OutputStrings = {
   stackOnYou: Outputs.stackOnYou,
   stackOnYouLocation: { // Used only in first tower
     en: '${stack} ${location}',
+    cn: '${stack} ${location}',
+    ko: '${stack} ${location}',
   },
   stackOnPlayer: { // Used only in first tower (role-based)
     en: 'Stack is on ${player}',
+    cn: '分摊点${player}',
+    ko: '${player}에게 쉐어',
   },
   stacksOnPlayers: {
     en: 'Stacks on ${players}',
+    cn: '分摊点${players}',
+    ko: '${players}에게 쉐어',
   },
   stacksOnPlayersTower: { // Used after first tower for when partner couldn't be found or none config
     en: '${num}${stack} + ${tower}',
+    cn: '${num}${stack} + ${tower}',
+    ko: '${num}${stack} + ${tower}',
   },
   stackOnYouTower: { // Used in first tower only
     en: '${num}${tower} + ${marker}',
+    cn: '${num}${tower} + ${marker}',
+    ko: '${num}${tower} + ${marker}',
   },
   markerOnYouStacksOnPlayers: { // Used only for first tower
     en: '${num}${marker} + ${stacks}',
+    cn: '${num}${marker} + ${stacks}',
+    ko: '${num}${marker} + ${stacks}',
   },
   markerOnYouTowerOdds: { // Used for Odd Towers (excluding first set)
     en: '${num}${marker} + ${tower} + ${nearfar}',
+    cn: '${num}${marker} + ${tower} + ${nearfar}',
+    ko: '${num}${marker} + ${tower} + ${nearfar}',
   },
   markerOnYouTowerEvens: { // Used for Cones + Spreads (no stacks taking the towers)
     en: '${num}${marker} + ${tower} + ${nearfar}',
+    cn: '${num}${marker} + ${tower} + ${nearfar}',
+    ko: '${num}${marker} + ${tower} + ${nearfar}',
   },
   baitLeftConeOutOdds: {
     en: '${num}Bait Left Cone Out',
+    cn: '${num}左扇形向外引导',
+    ko: '${num}왼쪽 부채꼴 바깥으로 유도',
   },
   baitLeftConeLeftEvens: {
     en: '${num}Bait Left Cone Left',
+    cn: '${num}左扇形向左引导',
+    ko: '${num}왼쪽 부채꼴 왼쪽으로 유도',
   },
   leftStack: {
     en: '${num}Left Stack',
+    cn: '${num}左分摊',
+    ko: '${num}왼쪽 쉐어',
   },
   rightStack: {
     en: '${num}Right Stack',
+    cn: '${num}右分摊',
+    ko: '${num}오른쪽 쉐어',
   },
   bait: {
     en: '${num}Bait Cone Right or Clone Near',
+    cn: '${num}向右引导扇形或靠近分身',
+    ko: '${num}오른쪽 부채꼴 유도 또는 분신 유도',
   },
   baitConeFromPlayer: {
     en: 'Bait Cone from ${player}',
+    cn: '引导${player}的扇形',
+    ko: '${player}의 부채꼴 유도',
   },
   spreadWithPlayer: {
     en: 'Spread with ${player}',
+    cn: '与${player}分散',
+    ko: '${player}와 산개',
   },
   baitCloneOppositeTowers: {
     en: '${num}Bait Clone Opposite Towers Near',
+    cn: '${num}靠近引导塔对面分身',
+    ko: '${num}탑 반대쪽에서 분신 가까이 유도',
   },
   mechsBowtie: {
     en: '${num}${mech1} + ${mech2}',
+    cn: '${num}${mech1} + ${mech2}',
+    ko: '${num}${mech1} + ${mech2}',
   },
   mechs3Bowtie: {
     en: '${num}${mech1} + ${mech2} + ${mech3}',
+    cn: '${num}${mech1} + ${mech2} + ${mech3}',
+    ko: '${num}${mech1} + ${mech2} + ${mech3}',
   },
   numBeNearSpreadBowtie: {
     en: '${num}${near} + ${spread}',
+    cn: '${num}${near} + ${spread}',
+    ko: '${num}${near} + ${spread}',
   },
   baitLeftConeOutBowtie: {
     en: '${num}Bait Left Cone Out',
+    cn: '${num}左扇形向外引导',
+    ko: '${num}왼쪽 부채꼴 바깥으로 유도',
   },
   baitLeftConeLeftBowtie: {
     en: '${num}Bait Left Cone Left',
+    cn: '${num}左扇形向左引导',
+    ko: '${num}왼쪽 부채꼴 왼쪽으로 유도',
   },
   getHitBySpreadRightBowtie: { // Used only in 5th tower for AAAABBBB
     en: '${num}Get Right + Hit by Spread',
+    cn: '${num}向右+吃分散',
+    ko: '${num}오른쪽으로 + 산개징 맞기',
   },
   spreadTowersBowtie: { // Used only in last tower for AAAABBBB
     en: '${num}${tower} + ${spread}',
+    cn: '${num}${tower} + ${spread}',
+    ko: '${num}${tower} + ${spread}',
   },
   markerOnYouNoStrategy: { // Odd Towers
     en: '${num}${marker}',
+    cn: '${num}${marker}',
+    ko: '${num}${marker}',
   },
   mechsNoStrategy: {
     en: '${num}${marker} + ${mechs}',
+    cn: '${num}${marker} + ${mechs}',
+    ko: '${num}${marker} + ${mechs}',
   },
   baitNoStrategy: { // No marker and no strategy was selected
     en: '${num}Bait Cone or Clone Near',
+    cn: '${num}引导扇形或靠近分身',
+    ko: '${num}부채꼴 유도 또는 분신 유도',
   },
   baitConeOrStackNoStrategy: {
     en: '${num}Bait Cone or Stack',
+    cn: '${num}引导扇形或分摊',
+    ko: '${num}부채꼴 유도 또는 쉐어',
+  },
+};
+
+const exdeathLocaleNames: LocaleText = {
+  en: 'Exdeath',
+  de: 'Exdeath',
+  fr: 'Exdeath',
+  ja: 'エクスデス',
+  cn: '艾克斯迪司',
+  ko: '엑스데스',
+  tc: '艾克斯迪司',
+};
+
+const chaosLocaleNames: LocaleText = {
+  en: 'Chaos',
+  de: 'Chaos',
+  fr: 'Chaos',
+  ja: 'カオス',
+  cn: '卡奥斯',
+  ko: '카오스',
+  tc: '卡奧斯',
+};
+
+const boaOutputStrings: OutputStrings = {
+  ...Directions.outputStringsIntercardDir,
+  in: Outputs.in,
+  out: Outputs.out,
+  moveBossThenMech: {
+    en: 'Move ${boss} => ${mech}',
+    cn: '向 ${boss} 移动 => ${mech}',
+    ko: '${boss} 이동 => ${mech}',
+  },
+  exdeathMiddle: {
+    en: '${exdeath} Middle',
+    cn: '${exdeath} 中间',
+    ko: '${exdeath} 중앙',
+  },
+  chaosDir: {
+    en: '${chaos} to ${dir}',
+    cn: '${chaos} 向 ${dir}',
+    ko: '${chaos} ${dir}으로',
+  },
+  moveExdeathThenMech: {
+    en: 'Move ${exdeath} to ${long} => ${mech}',
+    cn: '向 ${exdeath} 移动 ${long} => ${mech}',
+    ko: '${exdeath} ${long}쪽 이동 => ${mech}',
+  },
+  crystals: {
+    en: '${short} => ${long} => ${wind} (later)',
+    cn: '${short} => ${long} => ${wind} (稍后)',
+    ko: '${short} => ${long} => ${wind} (나중)',
+  },
+  shortLongCrystals: {
+    en: '${short} => ${long}',
+    cn: '${short} => ${long}',
+    ko: '${short} => ${long}',
+  },
+  crystalsMech: {
+    en: '${crystals}; ${mech}',
+    cn: '${crystals}; ${mech}',
+    ko: '${crystals}; ${mech}',
+  },
+  fire: {
+    en: 'Fire ${dir}',
+    cn: '火 ${dir}',
+    ko: '불 ${dir}',
+  },
+  water: {
+    en: 'Water ${dir}',
+    cn: '水 ${dir}',
+    ko: '물 ${dir}',
+  },
+  wind: {
+    en: 'Wind ${dir}',
+    cn: '风 ${dir}',
+    ko: '바람 ${dir}',
+  },
+  tail: {
+    en: 'Face ${name}',
+    cn: '面向 ${name}',
+    ko: '${name} 바라보기',
+  },
+  head: Outputs.lookAwayFromTarget,
+  you: {
+    en: 'YOU',
+    cn: '你',
+    ko: '나',
+  },
+  baitFireDonut: {
+    en: 'Bait Fire Donut',
+    cn: '引导火月环',
+    ko: '불 도넛 유도',
+  },
+  baitWaterAoe: {
+    en: 'Bait Water AOE',
+    cn: '引导水AOE',
+    ko: '물 장판 유도',
+  },
+  baitCrystal: {
+    en: 'Bait ${crystal} ${inout}',
+    cn: '引导 ${crystal} ${inout}',
+    ko: '${crystal} ${inout} 유도',
+  },
+  fireOnPlayersCrystalDirNum: {
+    en: '${spread}/${dir} => ${bait}',
+    cn: '${spread}/${dir} => ${bait}',
+    ko: '${spread}/${dir} => ${bait}',
+  },
+  fireOnPlayers: {
+    en: 'Spread on ${players}',
+    cn: '分散点 ${players}',
+    ko: '${players}에게 산개징',
+  },
+  waterOnPlayersCrystalDirNum: {
+    en: '${donut}/${dir} => ${bait}',
+    cn: '${donut}/${dir} => ${bait}',
+    ko: '${donut}/${dir} => ${bait}',
+  },
+  waterOnPlayers: {
+    en: 'Donut on ${players}',
+    cn: '月环点 ${players}',
+    ko: '${players}에게 도넛징',
+  },
+  mechThenMech: {
+    en: '${mech1} => ${mech2}',
+    cn: '${mech1} => ${mech2}',
+    ko: '${mech1} => ${mech2}',
+  },
+  getMiddleNearPlayer: {
+    en: 'Get Middle Near ${player}',
+    cn: '去中间靠近 ${player}',
+    ko: '${player} 근처 중앙으로',
+  },
+  getHitByDonut: Outputs.goIntoMiddle,
+  knockbackToDir: {
+    en: 'Knockback to ${dir} ${facing}',
+    cn: '向 ${dir} 击退 ${facing}',
+    ko: '${dir}으로 넉백 ${facing}',
+  },
+  beNearWind: {
+    en: 'Be Near ${dir}',
+    cn: '靠近 ${dir}',
+    ko: '${dir} 근처로',
+  },
+  stackPartner: Outputs.stackPartner,
+  donutLater: {
+    en: 'Donut (later)',
+    cn: '月环 (稍后)',
+    ko: '도넛 (나중)',
+  },
+  roleStacks: {
+    en: 'Role Stacks',
+    de: 'Rollengruppe sammeln',
+    fr: 'Package par rôle',
+    cn: '职能分摊',
+    ko: '역할별 쉐어',
+    tc: '職能分攤',
+  },
+  beNearExdeath: {
+    en: 'Be Near ${name}',
+    cn: '靠近 ${name}',
+    ko: '${name} 근처로',
+  },
+  baitJump: {
+    en: 'Bait Jump',
+    cn: '引导跳',
+    ko: '점프 유도',
+  },
+};
+
+// Used to return clockwise from Kefka ordering of Black Hole Tethers
+const getCWOrderFromN = (
+  n: number,
+  dirNums: number[],
+): number[] => {
+  // Calculate distance from cardinal
+  const getCWDistance = (start: number, end: number): number => {
+    const diff = end - start;
+    return diff < 0 ? diff + 4 : diff;
+  };
+
+  return [...dirNums].sort((a, b) => {
+    return getCWDistance(n, a) - getCWDistance(n, b);
+  });
+};
+
+const blackHoleOutputStrings: OutputStrings = {
+  ...Directions.outputStringsCardinalDir,
+  num: {
+    en: '${num}: ',
+    de: '${num}: ',
+    fr: '${num}: ',
+    ja: '${num}: ',
+    cn: '${num}: ',
+    ko: '${num}: ',
+    tc: '${num}: ',
+  },
+  nothing: {
+    en: '${num}',
+    de: '${num}',
+    fr: '${num}',
+    ja: '${num}',
+    cn: '${num}',
+    ko: '${num}',
+    tc: '${num}',
+  },
+  getDirTether: {
+    en: '${num}Get ${dir} Tether',
+    cn: '${num} 接 ${dir} 线',
+    ko: '${num}${dir} 선 가져오기',
+  },
+  getDirTethers: {
+    en: '${num}Get ${dir1}/${dir2} Tethers',
+    cn: '${num} 接 ${dir1}/${dir2} 线',
+    ko: '${num}${dir1}/${dir2} 선 가져오기',
+  },
+  getBothTethers: { // Instead of Clockwise 1/Clockwise 2
+    en: '${num}Get Both Tethers',
+    cn: '${num} 接两条线',
+    ko: '${num}선 둘 다 가져오기',
+  },
+  keepTether: {
+    en: '${num}Keep Tether',
+    cn: '${num} 保持线',
+    ko: '${num}선 유지',
+  },
+  passTether: {
+    en: '${num}Pass Tether',
+    cn: '${num} 传递线',
+    ko: '${num}선 넘기기',
+  },
+  clockwiseOne: {
+    en: 'Clockwise 1',
+    cn: '顺时针 1',
+    ko: '시계방향 1',
+  },
+  clockwiseTwo: {
+    en: 'Clockwise 2',
+    cn: '顺时针 2',
+    ko: '시계방향 2',
+  },
+  clockwiseThree: { // Player could change this to CCW 1
+    en: 'Clockwise 3',
+    cn: '顺时针 3',
+    ko: '시계방향 3',
+  },
+  middleThenGetDirTether: {
+    en: '${num}Middle => Get ${dir} Tether',
+    cn: '${num} 中间 => 接 ${dir} 线',
+    ko: '${num}중앙 => ${dir} 선 가져오기',
+  },
+  middleThenGetDirTethers: {
+    en: '${num}Middle => Get ${dir1}/${dir2} Tethers',
+    cn: '${num} 中间 => 接 ${dir1}/${dir2} 线',
+    ko: '${num}중앙 => ${dir1}/${dir2} 선 가져오기',
+  },
+  middleThenGetBothTethers: {
+    en: '${num}Middle => Get Both Tethers',
+    cn: '${num} 中间 => 接两条线',
+    ko: '${num}중앙 => 선 둘 다 가져오기',
+  },
+  oneBlackHole: {
+    en: '${num}${dir}',
+    cn: '${num}${dir}',
+    ko: '${num}${dir}',
+  },
+  twoBlackHoles: {
+    en: '${num}${dir1}/${dir2}',
+    cn: '${num}${dir1}/${dir2}',
+    ko: '${num}${dir1}/${dir2}',
+  },
+  threeBlackHoles: {
+    en: '${num}${dir1}/${dir2}/${dir3}',
+    cn: '${num}${dir1}/${dir2}/${dir3}',
+    ko: '${num}${dir1}/${dir2}/${dir3}',
   },
 };
 
@@ -471,12 +848,16 @@ const triggerSet: TriggerSet<Data> = {
           `Outputs up to 12 locations to drop first arrow. Second call will be relative to first<br />
           Clockwise: <a href="https://pastebin.com/7fs57PyQ" target="_blank">Kefka Bin</a><br />
           Filipino Box: <a href="https://raidplan.io/plan/5rf2uhud5ztsbud5" target="_blank">Raidplan</a><br />`,
+        cn: `输出最多12个首个箭头放置的位置。第二次将相对于首个位置播报<br />
+          顺时针: <a href="https://pastebin.com/7fs57PyQ" target="_blank">Kefka Bin</a><br />
+          Filipino Box: <a href="https://raidplan.io/plan/5rf2uhud5ztsbud5" target="_blank">Raidplan</a><br />`,
         ko: `최대 12곳의 후보 장소 중에서 첫 번째 화살표를 설치할 위치를 알립니다. 두 번째 호출은 첫 번째 위치를 기준으로 합니다.<br />
           시계 방향: <a href="https://pastebin.com/7fs57PyQ" target="_blank">Kefka Bin</a><br />
           Filipino Box: <a href="https://raidplan.io/plan/5rf2uhud5ztsbud5" target="_blank">Raidplan</a><br />`,
       },
       name: {
         en: 'P1 Graven Image 3 Tele-Portent Strategy',
+        cn: 'P1众神之像3传送策略',
         ko: '1페이즈 신들의 상 3 텔레포 전략',
       },
       type: 'select',
@@ -485,6 +866,11 @@ const triggerSet: TriggerSet<Data> = {
           'Clockwise Big Box': 'clockwise',
           'Filipino Box (Intercardinals)': 'filipino',
           'Call Debuffs only': 'none',
+        },
+        cn: {
+          '顺时针大圈': 'clockwise',
+          'Filipino Box (对角)': 'filipino',
+          '仅报Debuff': 'none',
         },
         ko: {
           '시계 방향 큰 네모': 'clockwise',
@@ -502,9 +888,21 @@ const triggerSet: TriggerSet<Data> = {
           Modified ABBA: <a href="https://raidplan.io/plan/b5tgewax4kb746sf" target="_blank">Raidplan</a><br />
           Bowtie AAAABBBB 4/4: Using same priority as the kroxy-rinon. (Will require Tank LB3)<br />
           Default will be Cones + Support Stack Left and Spread + DPS Stack Right, relative towers to facing in`,
+        cn: `玩家分为两个四人小组，选择踩塔顺序<br />
+          Kroxy-Rinon 3/4/1: <a href="https://pastebin.com/7fs57PyQ" target="_blank">Kefka Bin</a><br />
+          改良 ABBA: <a href="https://raidplan.io/plan/b5tgewax4kb746sf" target="_blank">Raidplan</a><br />
+          Bowtie AAAABBBB 4/4: 使用与kroxy-rinon相同的优先级(需要坦克 LB3)<br />
+          默认设置为:扇形+支援职业分摊左塔,分散+DPS 分摊右塔(相对塔面向内)`,
+        ko: `4명씩 두 그룹으로 나눠 순서를 정해 탑을 처리합니다.<br />
+          Kroxy-Rinon 3/4/1: <a href="https://pastebin.com/7fs57PyQ" target="_blank">Kefka Bin</a><br />
+          변형 ABBA: <a href="https://raidplan.io/plan/b5tgewax4kb746sf" target="_blank">Raidplan</a><br />
+          Bowtie AAAABBBB 4/4: kroxy-rinon과 같은 우선순위를 사용합니다. (3단 탱리밋 필요)<br />
+          기본값은 바라보는 방향 기준으로 부채꼴 + 탱힐 쉐어 왼쪽, 산개 + 딜러 쉐어 오른쪽입니다.`,
       },
       name: {
         en: 'P2 Forsaken Strategy',
+        cn: 'P2遗弃末世策略',
+        ko: '2페이즈 행방불명 전략',
       },
       type: 'select',
       options: {
@@ -514,8 +912,166 @@ const triggerSet: TriggerSet<Data> = {
           'AAAABBBB (4/4), Bowtie': 'bowtie',
           'Generic Calls': 'none',
         },
+        cn: {
+          'AAABBBBA (3/4/1), Kroxy-Rinon': 'kroxy-rinon',
+          'ABBAABBA (1/2/2/2/1), 改良': 'abba',
+          'AAAABBBB (4/4), Bowtie': 'bowtie',
+          '通用报点': 'none',
+        },
+        ko: {
+          'AAABBBBA (3/4/1), Kroxy-Rinon': 'kroxy-rinon',
+          'ABBAABBA (1/2/2/2/1), 변형': 'abba',
+          'AAAABBBB (4/4), Bowtie': 'bowtie',
+          '기본값': 'none',
+        },
       },
       default: 'none',
+    },
+    {
+      id: 'boa',
+      comment: {
+        en:
+          `Tank LB3: Ranged players bait Short => Long Crystal, party resolves debuffs at Wind Crystal. Role stack the wind baits after Vacuum Wave<br />
+        Entropy/Dynamic Fluid Bait (Default): Follows <a href="https://raidplan.io/plan/9assfrb4fcvwat9e" target="_blank">SG3K Raidplan</a>: Entropy/Fluid bait their crystals and get hit by crystal's aoe<br />
+        None: Only calls debuffs and locations`,
+        cn: `坦克 LB3: 远程玩家诱导短 => 长水晶，小队在风水晶处理debuff。真空波动画后按职能分摊风诱导。<br />
+        混沌涡旋/混沌之水诱导(默认): 遵循 <a href="https://raidplan.io/plan/9assfrb4fcvwat9e" target="_blank">SG3K Raidplan</a>: 混沌涡旋/混沌之水各自水晶诱导并吃水晶AOE<br />
+        无: 仅播报debuff和位置。`,
+        ko:
+          `탱커 3단 리밋: 원거리 직업이 짧은 수정 => 긴 수정을 유도하고, 본대는 바람 수정에서 디버프를 처리합니다. 진공파 이후 바람 유도는 역할별 쉐어로 처리합니다.<br />
+        불/물 유도 (기본값): <a href="https://raidplan.io/plan/9assfrb4fcvwat9e" target="_blank">SG3K 레이드플랜</a>을 따릅니다. 불/물 대상자가 각 수정을 유도하고 수정 장판에 맞습니다.<br />
+        없음: 디버프와 위치만 알립니다.`,
+      },
+      name: {
+        en: 'P3 Bowels of Agony Strategy',
+        cn: 'P3 深层痛楚策略',
+        ko: '3페이즈 고통의 심핵 전략',
+      },
+      type: 'select',
+      options: {
+        en: {
+          'Tank LB3': 'lb3',
+          'Entropy/Dynamic Fluid Bait': 'sg3k',
+          'Generic Calls': 'none',
+        },
+        cn: {
+          '坦克 LB3': 'lb3',
+          '混沌涡旋/混沌之水诱导': 'sg3k',
+          '通用播报': 'none',
+        },
+        ko: {
+          '탱커 3단 리밋': 'lb3',
+          '불/물 유도': 'sg3k',
+          '기본 알림': 'none',
+        },
+      },
+      default: 'sg3k',
+    },
+    {
+      id: 'accretion',
+      comment: {
+        en: `Order in which players will be told to heal for resolving Accretion debuffs`,
+        cn: `处理泥土 debuffs 时提示玩家治疗的顺序`,
+        ko: `혼돈의 진흙 디버프를 처리하기 위해 회복할 플레이어 순서입니다.`,
+      },
+      name: {
+        en: 'P3 Accretion Heal Order',
+        cn: 'P3 泥土治疗顺序',
+        ko: '3페이즈 혼돈의 진흙 회복 순서',
+      },
+      type: 'select',
+      options: {
+        en: {
+          'First In Line => Second In Line': 'line',
+          'Healer => DPS': 'role',
+        },
+        cn: {
+          '第一行 => 第二行': 'line',
+          '治疗 => DPS': 'role',
+        },
+        ko: {
+          '첫 번째 줄 => 두 번째 줄': 'line',
+          '힐러 => 딜러': 'role',
+        },
+      },
+      default: 'role',
+    },
+    {
+      id: 'blackHole',
+      comment: {
+        en:
+          `Tether priority configured relative to Kefka: DPS CW, Support 2nd CW, Accretion 3rd CW<br />
+        D>S>A: #1 DPS, #1 Support, #1 Accretion, #2 DPS, #2 Support, #2 Accretion, #3 DPS, #3 Support<br />
+        S>D>A: #1 Support, #1 DPS, #1 Accretion, #2 Support, #2 DPS, #2 Accretion, #3 Support, #2 DPS<br />
+        D>S>A Double Tether: BH1 & BH 4 only 1 person grab tethers. BH1 #1 Support, #1 DPS; BH4 #3 Support, #3 DPS<br />
+        Generic: Calls the Nothingness set number and tether directions in CW order from Kefka`,
+        cn: `以凯夫卡为基准的连线优先级配置: DPS顺时针, T奶第2顺时针, 泥土第3顺时针<br />
+        D>S>A: #1 DPS, #1 T奶, #1 泥土, #2 DPS, #2 T奶, #2 泥土, #3 DPS, #3 T奶<br />
+        S>D>A: #1 T奶, #1 DPS, #1 泥土, #2 T奶, #2 DPS, #2 泥土, #3 T奶, #2 DPS<br />
+        D>S>A 双线: 黑洞1与黑洞4仅1人拿连线。黑洞1 #1 T奶, #1 DPS; 黑洞4 #3 T奶, #3 DPS<br />
+        通用: 播报虚无组编号及以凯夫卡为基准顺时针`,
+        ko: `케프카 기준 선 우선순위: 딜러는 시계 방향 첫 번째, 탱힐은 두 번째, 혼돈의 진흙 대상자는 세 번째<br />
+        딜러>탱힐>진흙: 1번 딜러, 1번 탱힐, 1번 진흙, 2번 딜러, 2번 탱힐, 2번 진흙, 3번 딜러, 3번 탱힐<br />
+        탱힐>딜러>진흙: 1번 탱힐, 1번 딜러, 1번 진흙, 2번 탱힐, 2번 딜러, 2번 진흙, 3번 탱힐, 3번 딜러<br />
+        딜러>탱힐>진흙 선 2개: 1번과 4번 블랙홀만 한 명이 선을 가져갑니다. 1번 블랙홀은 1번 탱힐과 1번 딜러, 4번 블랙홀은 3번 탱힐과 3번 딜러<br />
+        기본값: 무의 파동 세트 번호와 케프카 기준 시계 방향 선 위치를 알립니다.`,
+      },
+      name: {
+        en: 'P3 Black Hole Order',
+        cn: 'P3 黑洞顺序',
+        ko: '3페이즈 블랙홀 순서',
+      },
+      type: 'select',
+      options: {
+        en: {
+          'D>S>A': 'dsa',
+          'S>D>A': 'sda',
+          'D>S>A Double Tether': 'modified',
+          'Generic calls': 'none',
+        },
+        cn: {
+          'D>S>A': 'dsa',
+          'S>D>A': 'sda',
+          'D>S>A 双线': 'modified',
+          '通用播报': 'none',
+        },
+        ko: {
+          '딜러>탱힐>진흙': 'dsa',
+          '탱힐>딜러>진흙': 'sda',
+          '딜러>탱힐>진흙 선 2개': 'modified',
+          '기본값': 'none',
+        },
+      },
+      default: 'none',
+    },
+    {
+      id: 'blackHoleTether',
+      comment: {
+        en: `Whether to call true north or clockwise number from Kefka`,
+        cn: `以真北或凯夫卡顺时针编号进行播报`,
+        ko: `절대 방위와 케프카 기준 시계 방향 번호 중 사용할 알림을 선택합니다.`,
+      },
+      name: {
+        en: 'P3 Black Hole Tether True North or Clockwise Number',
+        cn: 'P3 黑洞连线真北或顺时针编号',
+        ko: '3페이즈 블랙홀 선 절대 방위 또는 시계 방향 번호',
+      },
+      type: 'select',
+      options: {
+        en: {
+          'True North': 'true',
+          'Clockwise Number': 'clock',
+        },
+        cn: {
+          '真北': 'true',
+          '顺时针编号': 'clock',
+        },
+        ko: {
+          '절대 방위': 'true',
+          '시계 방향 번호': 'clock',
+        },
+      },
+      default: 'true',
     },
   ],
   timelineFile: 'dancing_mad.txt',
@@ -540,6 +1096,30 @@ const triggerSet: TriggerSet<Data> = {
       forsakenGroupA: [],
       forsakenGroupB: [],
       trineDirNums: [],
+      // Phase 3
+      windCrystalNext: false,
+      fireElementPlayers: [],
+      waterElementPlayers: [],
+      inLine: {},
+      hadAccretion: false,
+      blackHoleIdDirNums: {},
+      nothingnessTracker: 1,
+      blackHoleTetherDirNums: [],
+      isSecondPuddle: false,
+      isKnockDown2: false,
+      blizzardStarted: false,
+      // Phase 4
+      grandCrossCount: 0,
+      shortShriekPlayers: [],
+      longShriekPlayers: [],
+      shortForkedPlayers: [],
+      longForkedPlayers: [],
+      shortCompressedPlayers: [],
+      longCompressedPlayers: [],
+      firstShortBombPlayers: [],
+      firstLongBombPlayers: [],
+      secondShortBombPlayers: [],
+      secondLongBombPlayers: [],
     };
   },
   triggers: [
@@ -551,7 +1131,8 @@ const triggerSet: TriggerSet<Data> = {
     },
     {
       id: 'DMU ActorSetPos Tracker',
-      // Only in use for P1 Graven Image tethers
+      // P1 Graven Image tethers
+      // P3 Max actor location
       type: 'ActorSetPos',
       netRegex: { id: '4[0-9A-Fa-f]{7}', capture: true },
       run: (data, matches) =>
@@ -591,10 +1172,12 @@ const triggerSet: TriggerSet<Data> = {
         avoidCleaves: Outputs.avoidTankCleaves,
         cleaveOnPlayer: {
           en: 'Tank Cleave on ${player}',
+          cn: '坦克顺劈点${player}',
           ko: '${player}에게 광역 탱버',
         },
         cleaveSwap: { // Defaulting to same output as cleaveOnPlayer
           en: 'Tank Cleave on ${player}',
+          cn: '坦克顺劈点${player}',
           ko: '${player}에게 광역 탱버',
         },
       },
@@ -679,7 +1262,7 @@ const triggerSet: TriggerSet<Data> = {
       },
     },
     {
-      id: 'DMU P1 Mystery Magic Collect',
+      id: 'DMU P1 and P4 Mystery Magic Collect',
       type: 'HeadMarker',
       netRegex: {
         id: [
@@ -749,7 +1332,30 @@ const triggerSet: TriggerSet<Data> = {
             : output.stackFakeIce!({ mech: output.stack!(), ice: output.fakeIce!() });
         }
       },
-      outputStrings: mysteryMagicOutputStrings,
+      outputStrings: {
+        ...mysteryMagicIceOutputStrings,
+        ...mysteryMagicFireOutputStrings,
+        stackTrueIce: {
+          en: '${mech} + ${ice}',
+          cn: '${mech} + ${ice}',
+          ko: '${mech} + ${ice}',
+        },
+        stackFakeIce: {
+          en: '${mech} + ${ice}',
+          cn: '${mech} + ${ice}',
+          ko: '${mech} + ${ice}',
+        },
+        spreadTrueIce: {
+          en: '${mech} + ${ice}',
+          cn: '${mech} + ${ice}',
+          ko: '${mech} + ${ice}',
+        },
+        spreadFakeIce: {
+          en: '${mech} + ${ice}',
+          cn: '${mech} + ${ice}',
+          ko: '${mech} + ${ice}',
+        },
+      },
     },
     {
       id: 'DMU P1 Graven Image Tether Cleanup',
@@ -830,6 +1436,7 @@ const triggerSet: TriggerSet<Data> = {
       outputStrings: {
         waveCannonLine: {
           en: 'E/W Spread',
+          cn: '左/右分散',
           ko: '동/서 산개',
         },
       },
@@ -875,6 +1482,7 @@ const triggerSet: TriggerSet<Data> = {
           },
           extra: {
             en: 'Extra Tower',
+            cn: '额外塔',
             ko: '남는 탑',
           },
         };
@@ -969,8 +1577,9 @@ const triggerSet: TriggerSet<Data> = {
       outputStrings: trapOutputStrings,
     },
     {
-      id: 'DMU P1 Mystery Magic Ice and Thunder',
-      // Set 2: Only Ice and Thunder should be set
+      id: 'DMU P1 and P4 Mystery Magic Ice and Thunder',
+      // P1 Set 2: Only Ice and Thunder should be set
+      // P4 All BA94 Mystery Magic casts
       type: 'StartsUsing',
       netRegex: { id: 'BA94', source: 'Kefka', capture: false },
       condition: (data) => {
@@ -986,7 +1595,7 @@ const triggerSet: TriggerSet<Data> = {
           ? output.trueIceFakeThunder!()
           : output.fakeIceFakeThunder!();
       },
-      outputStrings: mysteryMagicOutputStrings,
+      outputStrings: mysteryMagicIceThunderOutputStrings,
     },
     {
       id: 'DMU P1 Light of Judgment',
@@ -1005,15 +1614,17 @@ const triggerSet: TriggerSet<Data> = {
     },
     {
       id: 'DMU P1 Mystery Magic Ice, and Gravitas and Vitrophyre Tethers 1',
-      // Occurs between Set 2 and Set 3
-      // BA95 Blizzard Blowout III cast
+      // BA95 Blizzard III Blowout
+      // Set 3: P1 Ice Only, and Gravitas and Vitrophyre Tethers
+      // Occurs between Graven Image Set 2 and Set 3
       type: 'StartsUsing',
       netRegex: { id: 'BA95', source: 'Kefka', capture: false },
       condition: (data) => {
         if (
           data.isIceTrue !== undefined &&
           data.isThunderTrue === undefined &&
-          data.isFireTrue === undefined
+          data.isFireTrue === undefined &&
+          data.phase === 'p1'
         )
           return true;
         return false;
@@ -1032,7 +1643,31 @@ const triggerSet: TriggerSet<Data> = {
             mech3: hasVitrophyre ? output.spread!() : output.middle!(),
           });
       },
-      outputStrings: mysteryMagicOutputStrings,
+      outputStrings: {
+        ...mysteryMagicIceOutputStrings,
+        ...mysteryMagicLookOutputStrings,
+        puddle: {
+          en: 'Bait Puddle',
+          de: 'Fläche ködern',
+          fr: 'Déposez',
+          ja: 'AOE誘導',
+          cn: '诱导AOE',
+          ko: '장판 유도',
+          tc: '誘導AOE',
+        },
+        middle: Outputs.goIntoMiddle,
+        spread: Outputs.spread,
+        trueIcePuddle: {
+          en: '${mech1} + ${mech2} => ${mech3}',
+          cn: '${mech1} + ${mech2} => ${mech3}',
+          ko: '${mech1} + ${mech2} => ${mech3}',
+        },
+        fakeIcePuddle: {
+          en: '${mech1} + ${mech2} => ${mech3}',
+          cn: '${mech1} + ${mech2} => ${mech3}',
+          ko: '${mech1} + ${mech2} => ${mech3}',
+        },
+      },
     },
     {
       id: 'DMU P1 Vitrophyre',
@@ -1048,10 +1683,12 @@ const triggerSet: TriggerSet<Data> = {
       outputStrings: {
         avoidTethers: {
           en: 'Avoid Tethered Players',
+          cn: '避开连线玩家',
           ko: '선 대상자 피하기',
         },
         spread: {
           en: 'Spread (avoid puddles)',
+          cn: '分散(避开圈圈)',
           ko: '산개 (장판 피하기)',
         },
       },
@@ -1157,10 +1794,12 @@ const triggerSet: TriggerSet<Data> = {
         },
         gravitas: {
           en: '${mech1} => ${mech2}',
+          cn: '${mech1} => ${mech2}',
           ko: '${mech1} => ${mech2}',
         },
         vitrophyre: {
           en: '${mech1} => ${mech2}',
+          cn: '${mech1} => ${mech2}',
           ko: '${mech1} => ${mech2}',
         },
       },
@@ -1352,90 +1991,112 @@ const triggerSet: TriggerSet<Data> = {
         northwest: Outputs.northwest,
         upup: {
           en: 'Up Portents',
+          cn: '上箭头',
           ko: '위쪽 화살표',
         },
         downdown: {
           en: 'Down Portents',
+          cn: '下箭头',
           ko: '아래쪽 화살표',
         },
         rightright: {
           en: 'Right Portents',
+          cn: '右箭头',
           ko: '오른쪽 화살표',
         },
         leftleft: {
           en: 'Left Portents',
+          cn: '左箭头',
           ko: '왼쪽 화살표',
         },
         downleft: {
           en: 'Down => Left Portent',
+          cn: '下 => 左箭头',
           ko: '아래 => 왼쪽 화살표',
         },
         downright: {
           en: 'Down => Right Portent',
+          cn: '下 => 右箭头',
           ko: '아래 => 오른쪽 화살표',
         },
         rightup: {
           en: 'Right => Up Portent',
+          cn: '右 => 上箭头',
           ko: '오른쪽 => 위 화살표',
         },
         rightdown: {
           en: 'Right => Down Portent',
+          cn: '右 => 下箭头',
           ko: '오른쪽 => 아래 화살표',
         },
         leftup: {
           en: 'Left => Up Portent',
+          cn: '左 => 上箭头',
           ko: '왼쪽 => 위 화살표',
         },
         leftdown: {
           en: 'Left => Down Portent',
+          cn: '左 => 下箭头',
           ko: '왼쪽 => 아래 화살표',
         },
         upright: {
           en: 'Up => Right Portent',
+          cn: '上 => 右箭头',
           ko: '위 => 오른쪽 화살표',
         },
         upleft: {
           en: 'Up => Left Portent',
+          cn: '上 => 左箭头',
           ko: '위 => 왼쪽 화살표',
         },
         clockwise: {
           en: '${dir1} => ${dir2}',
+          cn: '${dir1} => ${dir2}',
           ko: '${dir1} => ${dir2}',
         },
         filipino: {
           en: '${dir1} => ${dir2}',
+          cn: '${dir1} => ${dir2}',
           ko: '${dir1} => ${dir2}',
         },
         southeastOut: { // upup for Filipino
           en: 'Southeast Out',
+          cn: '右下外',
           ko: '남동쪽 밖',
         },
         northwestOut: { // downdown for Filipino
           en: 'Northwest Out',
+          cn: '左上外',
           ko: '북서쪽 밖',
         },
         southwestOut: { // rightright for Filipino
           en: 'Southwest Out',
+          cn: '左下外',
           ko: '남서쪽 밖',
         },
         northeastOut: { // leftleft for Filipino
           en: 'Northeast Out',
+          cn: '右上外',
           ko: '북동쪽 밖',
         },
         southeastIn: { // downright for Filipino
           en: 'Southeast In',
+          cn: '右下内',
           ko: '남동쪽 안',
         },
         northeastIn: { // rightup for Filipino
           en: 'Northeast In',
+          cn: '右上内',
           ko: '북동쪽 안',
         },
         southwestIn: { // leftdown for Filipino
           en: 'Southwest In',
+          cn: '左下内',
           ko: '남서쪽 안',
         },
         northwestIn: { // upleft for Filipino
           en: 'Northwest In',
+          cn: '左上内',
           ko: '북서쪽 안',
         },
       },
@@ -1525,10 +2186,12 @@ const triggerSet: TriggerSet<Data> = {
         },
         indulgent: {
           en: 'Confuse Tether on YOU',
+          cn: '混乱连线点名',
           ko: '혼란 선 대상자',
         },
         idyllic: {
           en: 'Sleep Tether on YOU',
+          cn: '睡眠连线点名',
           ko: '수면 선 대상자',
         },
       },
@@ -1566,17 +2229,19 @@ const triggerSet: TriggerSet<Data> = {
         },
         indulgent: {
           en: 'Confuse Tether on YOU',
+          cn: '混乱连线点名',
           ko: '혼란 선 대상자',
         },
         idyllic: {
           en: 'Sleep Tether on YOU',
+          cn: '睡眠连线点名',
           ko: '수면 선 대상자',
         },
       },
     },
     {
       id: 'DMU P1 Ave Maria / Indolent Will Collect',
-      // Collect for reminder with Myster Magic
+      // Collect for reminder with Mystery Magic
       type: 'ActorControlExtra',
       netRegex: { category: '019D', param1: '40', param2: '80', capture: true },
       run: (data, matches) => {
@@ -1600,6 +2265,7 @@ const triggerSet: TriggerSet<Data> = {
       outputStrings: {
         lookAtLater: {
           en: 'Look At Statue (later)',
+          cn: '面对神像(稍后)',
           ko: '시선 바라보기 (나중에)',
         },
       },
@@ -1615,6 +2281,7 @@ const triggerSet: TriggerSet<Data> = {
       outputStrings: {
         lookAwayLater: {
           en: 'Look Away From Statue (later)',
+          cn: '背对神像(稍后)',
           ko: '시선 피하기 (나중에)',
         },
       },
@@ -1635,61 +2302,24 @@ const triggerSet: TriggerSet<Data> = {
       },
       infoText: (data, _matches, output) => {
         const fireMarker = data.fireMarker;
-        const look = data.isTowerLookAway ? output.lookAway!() : output.lookAt!();
+        const isTowerLookAway = data.isTowerLookAway;
+        const look = isTowerLookAway ? output.lookAway!() : output.lookAt!();
         if (
           (fireMarker === headMarkerData['dorito'] && data.isFireTrue) ||
           (fireMarker === headMarkerData['stack'] && !data.isFireTrue)
-        )
-          return data.isThunderTrue
-            ? output.spreadTrueThunderLook!({
-              mech: output.spread!(),
-              thunder: output.trueThunder!(),
-              look: look,
-            })
-            : output.spreadFakeThunderLook!({
-              mech: output.spread!(),
-              thunder: output.fakeThunder!(),
-              look: look,
-            });
-
-        if (
-          (fireMarker === headMarkerData['dorito'] && !data.isFireTrue) ||
-          (fireMarker === headMarkerData['stack'] && data.isFireTrue)
         ) {
-          return data.isThunderTrue
-            ? output.stackTrueThunderLook!({
-              mech: output.stack!(),
-              thunder: output.trueThunder!(),
-              look: look,
-            })
-            : output.stackFakeThunderLook!({
-              mech: output.stack!(),
-              thunder: output.fakeThunder!(),
-              look: look,
-            });
-        }
-      },
-      outputStrings: mysteryMagicOutputStrings,
-    },
-    {
-      id: 'DMU P4 Mystery Magic Fire and Thunder',
-      type: 'StartsUsing',
-      netRegex: { id: 'BA94', source: 'Kefka', capture: false },
-      condition: (data) => {
-        if (
-          data.isFireTrue !== undefined &&
-          data.isThunderTrue !== undefined &&
-          data.phase === 'p4'
-        )
-          return true;
-        return false;
-      },
-      infoText: (data, _matches, output) => {
-        const fireMarker = data.fireMarker;
-        if (
-          (fireMarker === headMarkerData['dorito'] && data.isFireTrue) ||
-          (fireMarker === headMarkerData['stack'] && !data.isFireTrue)
-        )
+          if (isTowerLookAway !== undefined)
+            return data.isThunderTrue
+              ? output.spreadTrueThunderLook!({
+                mech: output.spread!(),
+                thunder: output.trueThunder!(),
+                look: look,
+              })
+              : output.spreadFakeThunderLook!({
+                mech: output.spread!(),
+                thunder: output.fakeThunder!(),
+                look: look,
+              });
           return data.isThunderTrue
             ? output.spreadTrueThunder!({
               mech: output.spread!(),
@@ -1699,11 +2329,24 @@ const triggerSet: TriggerSet<Data> = {
               mech: output.spread!(),
               thunder: output.fakeThunder!(),
             });
+        }
 
         if (
           (fireMarker === headMarkerData['dorito'] && !data.isFireTrue) ||
           (fireMarker === headMarkerData['stack'] && data.isFireTrue)
         ) {
+          if (isTowerLookAway !== undefined)
+            return data.isThunderTrue
+              ? output.stackTrueThunderLook!({
+                mech: output.stack!(),
+                thunder: output.trueThunder!(),
+                look: look,
+              })
+              : output.stackFakeThunderLook!({
+                mech: output.stack!(),
+                thunder: output.fakeThunder!(),
+                look: look,
+              });
           return data.isThunderTrue
             ? output.stackTrueThunder!({
               mech: output.stack!(),
@@ -1715,13 +2358,63 @@ const triggerSet: TriggerSet<Data> = {
             });
         }
       },
-      outputStrings: mysteryMagicOutputStrings,
+      outputStrings: {
+        ...mysteryMagicFireOutputStrings,
+        ...mysteryMagicThunderOutputStrings,
+        ...mysteryMagicLookOutputStrings,
+        stackTrueThunderLook: {
+          en: '${mech} + ${thunder} + ${look}',
+          cn: '${mech} + ${thunder} + ${look}',
+          ko: '${mech} + ${thunder} + ${look}',
+        },
+        stackFakeThunderLook: {
+          en: '${mech} + ${thunder} + ${look}',
+          cn: '${mech} + ${thunder} + ${look}',
+          ko: '${mech} + ${thunder} + ${look}',
+        },
+        spreadTrueThunderLook: {
+          en: '${mech} + ${thunder} + ${look}',
+          cn: '${mech} + ${thunder} + ${look}',
+          ko: '${mech} + ${thunder} + ${look}',
+        },
+        spreadFakeThunderLook: {
+          en: '${mech} + ${thunder} + ${look}',
+          cn: '${mech} + ${thunder} + ${look}',
+          ko: '${mech} + ${thunder} + ${look}',
+        },
+        stackTrueThunder: {
+          en: '${mech} + ${thunder}',
+          cn: '${mech} + ${thunder}',
+          ko: '${mech} + ${thunder}',
+        },
+        stackFakeThunder: {
+          en: '${mech} + ${thunder}',
+          cn: '${mech} + ${thunder}',
+          ko: '${mech} + ${thunder}',
+        },
+        spreadTrueThunder: {
+          en: '${mech} + ${thunder}',
+          cn: '${mech} + ${thunder}',
+          ko: '${mech} + ${thunder}',
+        },
+        spreadFakeThunder: {
+          en: '${mech} + ${thunder}',
+          cn: '${mech} + ${thunder}',
+          ko: '${mech} + ${thunder}',
+        },
+      },
     },
     {
-      id: 'DMU P1 Mystery Magic Cleanup',
+      id: 'DMU P1 and P4 Mystery Magic Cleanup',
       // C622 Light of Judgment to reset for the Graven Image 2
+      // BB14 Grand Cross to reset between Myster Magic casts
       type: 'StartsUsing',
-      netRegex: { id: ['BA94', 'C622'], source: 'Kefka', capture: false },
+      netRegex: {
+        id: ['BA94', 'C622', 'BB14'],
+        source: ['Kefka', 'Neo Exdeath'],
+        capture: false,
+      },
+      delaySeconds: 0.2, // BB14 could trigger delete prior to P4's BA94 output
       run: (data) => {
         delete data.isFireTrue;
         delete data.isIceTrue;
@@ -2092,10 +2785,12 @@ const triggerSet: TriggerSet<Data> = {
       outputStrings: {
         future: {
           en: 'Future',
+          cn: '未来',
           ko: '미래',
         },
         past: {
           en: 'Past',
+          cn: '过去',
           ko: '과거',
         },
       },
@@ -2110,7 +2805,7 @@ const triggerSet: TriggerSet<Data> = {
       // TODO: Get Tower Locations
       type: 'Ability',
       netRegex: { id: ['BAD2', 'BAD3'], source: 'Kefka', capture: true },
-      delaySeconds: 1.5, // Time until headmarker and future/past damage
+      delaySeconds: 1.7, // Time until headmarker and future/past damage
       alertText: (data, matches, output) => {
         const isFuture = matches.id === 'BAD2';
         const count = data.pathOfLightCounter;
@@ -2468,16 +3163,24 @@ const triggerSet: TriggerSet<Data> = {
         behind: Outputs.getBehind,
         cone: {
           en: 'Cone on YOU',
+          cn: '扇形点名',
+          ko: '나에게 부채꼴',
         },
         spread: {
           en: 'Spread on YOU',
+          cn: '分散点名',
+          ko: '나에게 산개징',
         },
         stack: Outputs.stackOnYou,
         you: {
           en: 'YOU',
+          cn: '你',
+          ko: '나',
         },
         stacksOnPlayers: {
           en: 'Stacks on ${players}',
+          cn: '分摊点${players}',
+          ko: '${players}에게 쉐어',
         },
         stay: {
           en: 'Stay',
@@ -2489,57 +3192,93 @@ const triggerSet: TriggerSet<Data> = {
         },
         leftTower: {
           en: 'Left Tower',
+          cn: '左塔',
+          ko: '왼쪽 탑',
         },
         rightTower: {
           en: 'Right Tower',
+          cn: '右塔',
+          ko: '오른쪽 탑',
         },
         leftStack: {
           en: 'Left Stack',
+          cn: '左分摊',
+          ko: '왼쪽 쉐어',
         },
         rightStack: {
           en: 'Right Stack',
+          cn: '右分摊',
+          ko: '오른쪽 쉐어',
         },
         leftBaitOut: {
           en: 'Left Bait Out',
+          cn: '左侧向外引导',
+          ko: '왼쪽 유도 바깥으로',
         },
         baitOrStack: {
           en: 'Bait/Stack',
+          cn: '引导/分摊',
+          ko: '유도/쉐어',
         },
         future: {
           en: 'Bait opposite Towers',
+          cn: '向塔的反方向引导',
+          ko: '탑 반대쪽으로 유도',
         },
         past: {
           en: 'Bait between Towers',
+          cn: '向塔之间引导',
+          ko: '탑 사이로 유도',
         },
         baitThenMarker: {
           en: '${bait} => ${marker}',
+          cn: '${bait} => ${marker}',
+          ko: '${bait} => ${marker}',
         },
         baitThenMech: {
           en: '${bait} => ${mech}',
+          cn: '${bait} => ${mech}',
+          ko: '${bait} => ${mech}',
         },
         baitThenMarkerTower: {
           en: '${bait} => ${marker} ${tower}',
+          cn: '${bait} => ${marker} ${tower}',
+          ko: '${bait} => ${marker} ${tower}',
         },
         baitThenTower: {
           en: '${bait} => ${tower}',
+          cn: '${bait} => ${tower}',
+          ko: '${bait} => ${tower}',
         },
         baitThenStacks: {
           en: '${bait} => ${stacks}',
+          cn: '${bait} => ${stacks}',
+          ko: '${bait} => ${stacks}',
         },
         lastFuture: {
           en: 'Bait => ${action}',
+          cn: '引导 => ${action}',
+          ko: '유도 => ${action}',
         },
         lastPast: {
           en: 'Bait => ${action}',
+          cn: '引导 => ${action}',
+          ko: '유도 => ${action}',
         },
         getHitRightSpreadBowtie: {
           en: 'Hit by Right Spread',
+          cn: '吃右侧分散',
+          ko: '오른쪽 산개 맞기',
         },
         leftBaitLeftBowtie: {
           en: 'Left Bait Left',
+          cn: '左侧向左引导',
+          ko: '왼쪽 유도 왼쪽으로',
         },
         leftBaitOutBowtie: {
           en: 'Left Bait Out',
+          cn: '左侧向外引导',
+          ko: '왼쪽 유도 바깥으로',
         },
       },
     },
@@ -3556,13 +4295,13 @@ const triggerSet: TriggerSet<Data> = {
         const dirNums = data.trineDirNums;
         const sorted = dirNums.sort((a, b) => a - b); // Sorts clockwise
         const trine1 = sorted[0] !== undefined
-          ? Directions.output16Dir[sorted[0]] ?? 'unknown'
+          ? Directions.outputFrom16DirNum(sorted[0])
           : 'unknown';
         const trine2 = sorted[1] !== undefined
-          ? Directions.output16Dir[sorted[1]] ?? 'unknown'
+          ? Directions.outputFrom16DirNum(sorted[1])
           : 'unknown';
         const trine3 = sorted[2] !== undefined
-          ? Directions.output16Dir[sorted[2]] ?? 'unknown'
+          ? Directions.outputFrom16DirNum(sorted[2])
           : 'unknown';
 
         return output.safeSpots!({
@@ -3575,6 +4314,8 @@ const triggerSet: TriggerSet<Data> = {
         ...Directions.outputStrings16Dir,
         safeSpots: {
           en: '${dir1}/${dir2}/${dir3} Later',
+          cn: '稍后 ${dir1}/${dir2}/${dir3}',
+          ko: '${dir1}/${dir2}/${dir3} 나중에',
         },
       },
     },
@@ -3605,13 +4346,13 @@ const triggerSet: TriggerSet<Data> = {
         const dirNums = data.trineDirNums;
         const sorted = dirNums.sort((a, b) => a - b); // Sorts clockwise
         const trine1 = sorted[0] !== undefined
-          ? Directions.output16Dir[sorted[0]] ?? 'unknown'
+          ? Directions.outputFrom16DirNum(sorted[0])
           : 'unknown';
         const trine2 = sorted[1] !== undefined
-          ? Directions.output16Dir[sorted[1]] ?? 'unknown'
+          ? Directions.outputFrom16DirNum(sorted[1])
           : 'unknown';
         const trine3 = sorted[2] !== undefined
-          ? Directions.output16Dir[sorted[2]] ?? 'unknown'
+          ? Directions.outputFrom16DirNum(sorted[2])
           : 'unknown';
 
         return output.dirWings!({
@@ -3634,24 +4375,38 @@ const triggerSet: TriggerSet<Data> = {
         ...Directions.outputStrings16Dir,
         safeSpots: {
           en: '${dir1}/${dir2}/${dir3}',
+          cn: '${dir1}/${dir2}/${dir3}',
+          ko: '${dir1}/${dir2}/${dir3}',
         },
         wingsTrine: {
           en: '${wings} + ${trine}',
+          cn: '${wings} + ${trine}',
+          ko: '${wings} + ${trine}',
         },
         dirWings: {
           en: '${dirs} + ${wings}',
+          cn: '${dirs} + ${wings}',
+          ko: '${dirs} + ${wings}',
         },
         wingsParty: {
           en: 'Outer 2 Rings',
+          cn: '外侧第2环',
+          ko: '바깥쪽 2번째 원',
         },
         wingsTank: {
           en: 'Be Near/Far',
+          cn: '靠近/远离',
+          ko: '가까이/멀리 있기',
         },
         east: {
           en: 'Eastward Trine',
+          cn: '右侧异三角',
+          ko: '동쪽 트라인',
         },
         west: {
           en: 'Westward Trine',
+          cn: '左侧异三角',
+          ko: '서쪽 트라인',
         },
       },
     },
@@ -3664,12 +4419,24 @@ const triggerSet: TriggerSet<Data> = {
       response: Responses.getUnder('alert'),
     },
     {
-      id: 'DMU P3 Epic Hero/Fated Hero Debuffs',
-      // Applied to 4 nearest players when Chaos and Exdeath finish casting
-      // C2E2/C2E3 The Decisive Battle
+      id: 'DMU P3 Epic Hero/Fated Hero Collect',
+      // When Chaos finishes casting C2E2 The Decisive Battle:
+      //   4 nearest players to Chaos receive 1060 Epic Hero
+      //   4 furthest players from Cahos receive 1062 Fated Hero
       // 1060 Epic Hero: Can only damage Chaos, preferred by Melee DPS
       // 1062 Fated Hero: Can only damage Exdeath, preferred by Ranged DPS
       // These fall off once Exdeath casts BB12 Thunder III
+      // After Chaos' BB05 Big Bang, they fall off when one of the two bosses dies
+      // Additionally, the bosses are 0.1% HP limited until end of Chaos' BB05 Big Bang
+      //
+      // This collect is here to track which boss the tank is on for boss positioning
+      type: 'GainsEffect',
+      netRegex: { effectId: ['1060', '1062'], capture: true },
+      condition: Conditions.targetIsYou(),
+      run: (data, matches) => data.heroDebuff = matches.effectId === '1060' ? 'chaos' : 'exdeath',
+    },
+    {
+      id: 'DMU P3 Epic Hero/Fated Hero Debuffs',
       type: 'GainsEffect',
       netRegex: { effectId: ['1060', '1062'], capture: true },
       condition: Conditions.targetIsYou(),
@@ -3679,10 +4446,12 @@ const triggerSet: TriggerSet<Data> = {
       outputStrings: {
         epic: {
           en: 'Attack Chaos',
+          cn: '攻击卡奥斯',
           ko: '카오스 공격',
         },
         fated: {
           en: 'Attack Exdeath',
+          cn: '攻击艾克斯迪司',
           ko: '엑스데스 공격',
         },
       },
@@ -3694,25 +4463,891 @@ const triggerSet: TriggerSet<Data> = {
       response: Responses.aoe(),
     },
     {
-      id: 'DMU P3 Headwind/Tailwind Debuffs',
+      id: 'DMU P3 Entropy and Dynamic Fluid Debuff Collector',
       // Applied at BAF2 Bowels of Agony
-      // Debuffs trigger if hit by certain sources, causing a knockback
-      // 642 Headwind: Face away from damage source
-      // 643 Tailwind: Face towards damage source
+      // 640 Entropy: On expiration player is hit with point blank AoE and fire
+      // crystal targets two closest players with donut AoEs
+      // 641 Dynamic Flood: On expiration creates donut AoE around the player
+      // and water crystal targets two closest players with point-blank AoEs
+      //
+      // Entropy or Dynamic Fluid will have 19s and the other 46s duration
+      // At the same time, elemental crystals spawn at intercardinals
+      // Fire and Water Crystals will be opposite each other
+      // Wind Crystal will be between on the opposite side
+      //
+      // Exdeath Tank needs to go to element that has the long timer
+      // Chaos Tank needs to go between wind crystal and element with short timer
+      type: 'GainsEffect',
+      netRegex: { effectId: ['640', '641'], capture: true },
+      run: (data, matches) => {
+        const id = matches.effectId;
+        if (data.isFireShort === undefined) {
+          const isShort = parseFloat(matches.duration) < 20;
+          data.isFireShort = (isShort && id === '640') ||
+              (!isShort && id === '641')
+            ? true
+            : false;
+        }
+        if (data.me === matches.target)
+          data.myElement = id === '640' ? 'fire' : 'water';
+
+        if (id === '640')
+          data.fireElementPlayers.push(matches.target);
+        else
+          data.waterElementPlayers.push(matches.target);
+      },
+    },
+    {
+      id: 'DMU P3 Headwind/Tailwind Debuff Collector',
+      // Applied at BAF2 Bowels of Agony
+      // 642 Headwind: Face away from knockback source, wind crystal targets
+      // nearest player with 2-person stack
+      // 643 Tailwind: Face towards knockback source, wind crystal targets
+      // nearest player with 2-person stack
+      // These have a 68s duration
       type: 'GainsEffect',
       netRegex: { effectId: ['642', '643'], capture: true },
       condition: Conditions.targetIsYou(),
-      infoText: (_data, matches, output) => {
-        return matches.effectId === '642' ? output.headwind!() : output.tailwind!();
+      run: (data, matches) => data.myWind = matches.effectId === '642' ? 'head' : 'tail',
+    },
+    {
+      id: 'DMU P3 Bowels of Agony Debuffs and Short Element',
+      // Triggers on 642 Headwind or 643 Tailwind as all players get at least one of these
+      type: 'GainsEffect',
+      netRegex: { effectId: ['642', '643'], capture: true },
+      condition: Conditions.targetIsYou(),
+      delaySeconds: 0.1, // Delayed for Dynamic Fluid/Entropy debuff collect
+      durationSeconds: 14.9, // Until Dynamic Fluid/Entropy trigger
+      infoText: (data, matches, output) => {
+        const myElement = data.myElement;
+        const short = data.isFireShort
+          ? output.shortFire!()
+          : output.shortWater!();
+        const wind = matches.effectId === '642'
+          ? output.headwind!()
+          : output.tailwind!();
+        if (myElement !== undefined)
+          return output.withElement!({
+            short: short,
+            element: output[myElement]!(),
+            wind: wind,
+          });
+        return output.withoutElement!({
+          short: short,
+          wind: wind,
+        });
       },
       outputStrings: {
+        shortFire: {
+          en: 'Short Fire',
+          cn: '短火',
+          ko: '짧은 불',
+        },
+        shortWater: {
+          en: 'Short Water',
+          cn: '短水',
+          ko: '짧은 물',
+        },
+        fire: {
+          en: 'Fire',
+          cn: '火',
+          ko: '불',
+        },
+        water: {
+          en: 'Water',
+          cn: '水',
+          ko: '물',
+        },
         headwind: {
           en: 'Headwind on YOU',
+          cn: '混沌之风点名',
           ko: '혼돈의 바람 대상자',
         },
         tailwind: {
-          en: 'Tailwind on You',
+          en: 'Tailwind on YOU',
+          cn: '混沌之逆风点名',
           ko: '혼돈의 역풍 대상자',
+        },
+        withElement: {
+          en: '${short}: ${element} + ${wind}',
+          cn: '${short}: ${element} + ${wind}',
+          ko: '${short}: ${element} + ${wind}',
+        },
+        withoutElement: {
+          en: '${short}: ${wind}',
+          cn: '${short}: ${wind}',
+          ko: '${short}: ${wind}',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Crystal Location Collector',
+      // Crystals are added at same time as BAF2 Bowels of Agony
+      //
+      // First set spawns at intercardinals
+      // Wind will be inbetween Fire and Water
+      // The following are their BNpcIDs:
+      // 1EC03A => Fire (Red Triangle) Crystal
+      // 1EC03B => Water (Blue Square) Crystal
+      // 1EC03C => Wind (Green Diamond) Crystal
+      //
+      // Later the Earth Crystal will spawn in the center
+      // 1EC03D => Earth (Yellow Arrowhead) Crystal
+      // They are removed once players lose their respective debuffs
+      type: 'CombatantMemory',
+      netRegex: {
+        change: 'Add',
+        pair: [{ key: 'BNpcID', value: ['1EC03A', '1EC03B', '1EC03C'] }],
+        capture: true,
+      },
+      run: (data, matches) => {
+        const x = parseFloat(matches.pairPosX ?? '0');
+        const y = parseFloat(matches.pairPosY ?? '0');
+        const bnpcid = matches.pairBNpcID;
+        const dirNum = Directions.xyTo4DirIntercardNum(x, y, centerX, centerY);
+
+        if (bnpcid === '1EC03A')
+          data.fireCrystalDirNum = dirNum;
+        else if (bnpcid === '1EC03B')
+          data.waterCrystalDirNum = dirNum;
+        else
+          data.windCrystalDirNum = dirNum;
+      },
+    },
+    {
+      id: 'DMU P3 Short Crystal and Crystal Locations',
+      type: 'CombatantMemory',
+      netRegex: {
+        change: 'Add',
+        pair: [{ key: 'BNpcID', value: '1EC03C' }],
+        capture: false,
+      },
+      delaySeconds: 3, // To prevent overlap with debuffs and time for collect
+      durationSeconds: 16, // Duration of the first debuff
+      suppressSeconds: 1,
+      infoText: (data, _matches, output) => {
+        const config = data.triggerSetConfig.boa;
+        const fireDirNum = data.fireCrystalDirNum;
+        const waterDirNum = data.waterCrystalDirNum;
+        const windDirNum = data.windCrystalDirNum;
+        const heroDebuff = data.heroDebuff;
+        const fireDir = fireDirNum === undefined
+          ? 'unknown'
+          : Directions.outputFromIntercardNum(fireDirNum);
+        const waterDir = waterDirNum === undefined
+          ? 'unknown'
+          : Directions.outputFromIntercardNum(waterDirNum);
+        const windDir = windDirNum === undefined
+          ? 'unknown'
+          : Directions.outputFromIntercardNum(windDirNum);
+        const fShort = data.isFireShort;
+
+        const fire = output.fire!({ dir: output[fireDir]!() });
+        const water = output.water!({ dir: output[waterDir]!() });
+        const wind = output.wind!({ dir: output[windDir]!() });
+
+        if (config !== 'none') {
+          const myElement = data.myElement;
+          // Tank will need to first position Exdeath for Thunder III AOE
+          if (data.role === 'tank') {
+            const exdeathName = exdeathLocaleNames[data.parserLang];
+            if (config === 'sg3k') {
+              if (myElement === 'fire') {
+                if (fShort) {
+                  if (heroDebuff === 'chaos')
+                    return output.baitCrystal!({ crystal: fire, inout: output.in!() });
+                  return output.moveExdeathThenMech!({
+                    exdeath: exdeathName,
+                    long: water,
+                    mech: output.baitCrystal!({
+                      crystal: fire,
+                      inout: output.in!(),
+                    }),
+                  });
+                }
+
+                // Get player expected to be inner water bait
+                const players = data.waterElementPlayers.filter(
+                  (player) => data.party.isDPS(player),
+                );
+                const player = data.party.member(players[0]);
+
+                if (heroDebuff === 'chaos')
+                  return output.getMiddleNearPlayer!({ player: player });
+                return output.moveExdeathThenMech!({
+                  exdeath: exdeathName,
+                  long: fire,
+                  mech: output.getMiddleNearPlayer!({
+                    player: player,
+                  }),
+                });
+              }
+
+              if (myElement === 'water') {
+                if (fShort) {
+                  if (heroDebuff === 'chaos')
+                    return output.getHitByDonut!();
+                  return output.moveExdeathThenMech!({
+                    exdeath: exdeathName,
+                    long: water,
+                    mech: output.getHitByDonut!(),
+                  });
+                }
+
+                if (heroDebuff === 'chaos')
+                  return output.baitCrystal!({
+                    crystal: water,
+                    inout: output.in!(),
+                  });
+                return output.moveExdeathThenMech!({
+                  exdeath: exdeathName,
+                  long: fire,
+                  mech: output.baitCrystal!({
+                    crystal: water,
+                    inout: output.in!(),
+                  }),
+                });
+              }
+            }
+
+            // LB3 Config
+            const chaosName = chaosLocaleNames[data.parserLang];
+            const boss = heroDebuff === 'chaos'
+              ? output.chaosDir!({ chaos: chaosName, dir: wind })
+              : heroDebuff === 'exdeath'
+              ? output.exdeathMiddle!({ exdeath: exdeathName })
+              : undefined;
+            if (boss === undefined)
+              return output.beNearWind!({ dir: wind });
+
+            return output.moveBossThenMech!({
+              boss: boss,
+              mech: output.beNearWind!({
+                dir: wind,
+              }),
+            });
+          }
+
+          if (config === 'sg3k') {
+            if (myElement === 'fire') {
+              if (fShort)
+                return output.crystalsMech!({
+                  crystals: output.shortLongCrystals!({
+                    short: fire,
+                    long: water,
+                  }),
+                  mech: output.baitCrystal!({
+                    crystal: fire,
+                    inout: data.role === 'dps' ? output.in!() : output.out!(),
+                  }),
+                });
+
+              // Get player expected to be inner water bait
+              const players = data.waterElementPlayers.filter(
+                (player) => data.party.isDPS(player),
+              );
+              const player = data.party.member(players[0]);
+
+              return output.crystalsMech!({
+                crystals: output.shortLongCrystals!({
+                  short: water,
+                  long: fire,
+                }),
+                mech: output.getMiddleNearPlayer!({
+                  player: player,
+                }),
+              });
+            }
+
+            if (myElement === 'water') {
+              if (fShort)
+                return output.crystalsMech!({
+                  crystals: output.shortLongCrystals!({
+                    short: fire,
+                    long: water,
+                  }),
+                  mech: output.getHitByDonut!(),
+                });
+              return output.crystalsMech!({
+                crystals: output.shortLongCrystals!({
+                  short: water,
+                  long: fire,
+                }),
+                mech: output.baitCrystal!({
+                  crystal: water,
+                  inout: data.role === 'dps' ? output.in!() : output.out!(),
+                }),
+              });
+            }
+            return output.crystalsMech!({
+              crystals: output.shortLongCrystals!({
+                short: fShort ? fire : water,
+                long: fShort ? water : fire,
+              }),
+              mech: output.beNearWind!({
+                dir: wind,
+              }),
+            });
+          }
+
+          // LB3 Config
+          if (data.role !== 'dps' || Util.isMeleeDpsJob(data.job)) {
+            return output.crystalsMech!({
+              crystals: output.shortLongCrystals!({
+                short: fShort ? fire : water,
+                long: fShort ? water : fire,
+              }),
+              mech: output.beNearWind!({
+                dir: wind,
+              }),
+            });
+          }
+          // Ranged DPS Bait
+          return output.crystalsMech!({
+            crystals: output.shortLongCrystals!({
+              short: fShort ? fire : water,
+              long: fShort ? water : fire,
+            }),
+            mech: output.baitCrystal!({
+              crystal: fShort ? fire : water,
+              inout: output.out!(),
+            }),
+          });
+        }
+
+        return output.crystals!({
+          short: fShort ? fire : water,
+          long: fShort ? water : fire,
+          wind: wind,
+        });
+      },
+      outputStrings: boaOutputStrings,
+    },
+    {
+      id: 'DMU P3 Entropy and Fire Crystal',
+      // Late goes off 2s after BAFF Shockwave
+      type: 'GainsEffect',
+      netRegex: { effectId: '640', capture: true },
+      delaySeconds: (_data, matches) => parseFloat(matches.duration) - 4, // 6s after Lat/Long when Late
+      suppressSeconds: 1,
+      response: (data, _matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = boaOutputStrings;
+        const config = data.triggerSetConfig.boa;
+        const fireDirNum = data.fireCrystalDirNum;
+        const waterDirNum = data.waterCrystalDirNum;
+        const windDirNum = data.windCrystalDirNum;
+        const fireDir = fireDirNum === undefined
+          ? 'unknown'
+          : Directions.outputFromIntercardNum(fireDirNum);
+        const waterDir = waterDirNum === undefined
+          ? 'unknown'
+          : Directions.outputFromIntercardNum(waterDirNum);
+        const windDir = windDirNum === undefined
+          ? 'unknown'
+          : Directions.outputFromIntercardNum(windDirNum);
+        const fShort = data.isFireShort;
+        const myElement = data.myElement;
+        const myWind = data.myWind;
+
+        const fire = output.fire!({ dir: output[fireDir]!() });
+        const water = output.water!({ dir: output[waterDir]!() });
+        const wind = output.wind!({ dir: output[windDir]!() });
+
+        const players = data.fireElementPlayers.map(
+          (player) => {
+            if (player === data.me)
+              return output.you!();
+            return data.party.member(player);
+          },
+        );
+        const msg = players?.join(', ');
+        const spread = output.fireOnPlayers!({ players: msg });
+
+        const isRangedDPS = Util.isRangedDpsJob(data.job) || Util.isCasterDpsJob(data.job);
+        let severity = 'infoText';
+        if (config === 'lb3' && isRangedDPS)
+          severity = 'alertText';
+        else if (myElement === 'fire')
+          severity = 'alertText';
+
+        if (fShort) {
+          if (config === 'lb3') {
+            const isNotRanged = data.role !== 'dps' || Util.isMeleeDpsJob(data.job);
+            const mech1 = isNotRanged
+              ? spread
+              : output.baitCrystal!({
+                crystal: fire,
+                inout: output.out!(),
+              });
+            const mech2 = isNotRanged
+              ? output.donutLater!()
+              : output.baitCrystal!({
+                crystal: water,
+                inout: output.out!(),
+              });
+            return { [severity]: output.mechThenMech!({ mech1: mech1, mech2: mech2 }) };
+          }
+
+          if (config === 'sg3k') {
+            // Get player expected to be inner water bait
+            const players = data.waterElementPlayers.filter(
+              (player) => data.party.isDPS(player),
+            );
+            const player = data.party.member(players[0]);
+
+            const mech1 = myElement === 'fire'
+              ? output.baitCrystal!({
+                crystal: fire,
+                inout: data.role === 'dps' ? output.in!() : output.out!(),
+              })
+              : myElement === 'water'
+              ? output.getHitByDonut!()
+              : output.beNearWind!({ dir: wind });
+
+            const mech2 = myElement === 'fire'
+              ? output.getMiddleNearPlayer!({
+                player: player,
+              })
+              : myElement === 'water'
+              ? output.knockbackToDir!({
+                facing: output[myWind ?? 'unknown']!({ name: output[fireDir]!() }),
+                dir: output[waterDir]!(),
+              })
+              : output.stackPartner!();
+
+            return { [severity]: output.mechThenMech!({ mech1: mech1, mech2: mech2 }) };
+          }
+        }
+        const exdeathName = exdeathLocaleNames[data.parserLang];
+        if (config === 'lb3') {
+          const isNotRanged = data.role !== 'dps' || Util.isMeleeDpsJob(data.job);
+
+          const mech1 = isNotRanged
+            ? spread
+            : output.baitCrystal!({
+              crystal: fire,
+              inout: output.out!(),
+            });
+
+          const mech2 = Util.isRangedDpsJob(data.job)
+            ? output.baitJump!()
+            : output.beNearExdeath!({ name: exdeathName });
+
+          return { [severity]: output.mechThenMech!({ mech1: mech1, mech2: mech2 }) };
+        }
+
+        if (config === 'sg3k') {
+          // Players will need to get to opposite side of Wind Crystal
+          const exDeathDir = windDirNum === undefined
+            ? 'unknown'
+            : Directions.outputFromIntercardNum((windDirNum + 2) % 4);
+
+          const mech1 = myElement === 'fire'
+            ? output.baitCrystal!({
+              crystal: fire,
+              inout: data.role === 'dps' ? output.in!() : output.out!(),
+            })
+            : myElement === 'water'
+            ? output.getHitByDonut!()
+            : output.beNearWind!({ dir: wind });
+
+          const mech2 = myElement === 'fire'
+            ? output.beNearExdeath!({ name: exdeathName })
+            : myElement === 'water'
+            ? output.knockbackToDir!({
+              facing: output[myWind ?? 'unknown']!({
+                name: output[fireDir]!(),
+              }),
+              dir: output[exDeathDir]!(),
+            })
+            : output.stackPartner!();
+
+          return { [severity]: output.mechThenMech!({ mech1: mech1, mech2: mech2 }) };
+        }
+        return {
+          [severity]: output.fireOnPlayersCrystalDirNum!({
+            spread: spread,
+            dir: fire,
+            bait: output.baitFireDonut!(),
+          }),
+        };
+      },
+    },
+    {
+      id: 'DMU P3 Dynamic Fluid and Water Crystal',
+      // Late goes off 2s after BAFF Shockwave
+      type: 'GainsEffect',
+      netRegex: { effectId: '641', capture: true },
+      delaySeconds: (_data, matches) => parseFloat(matches.duration) - 4, // 6s after Lat/Long when Late
+      suppressSeconds: 1,
+      response: (data, _matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = boaOutputStrings;
+        const config = data.triggerSetConfig.boa;
+        const fireDirNum = data.fireCrystalDirNum;
+        const waterDirNum = data.waterCrystalDirNum;
+        const windDirNum = data.windCrystalDirNum;
+        const fireDir = fireDirNum === undefined
+          ? 'unknown'
+          : Directions.outputFromIntercardNum(fireDirNum);
+        const waterDir = waterDirNum === undefined
+          ? 'unknown'
+          : Directions.outputFromIntercardNum(waterDirNum);
+        const windDir = windDirNum === undefined
+          ? 'unknown'
+          : Directions.outputFromIntercardNum(windDirNum);
+        const fShort = data.isFireShort;
+        const myElement = data.myElement;
+        const myWind = data.myWind;
+
+        const fire = output.fire!({ dir: output[fireDir]!() });
+        const water = output.water!({ dir: output[waterDir]!() });
+        const wind = output.wind!({ dir: output[windDir]!() });
+
+        const isRangedDPS = Util.isRangedDpsJob(data.job) || Util.isCasterDpsJob(data.job);
+        let severity = 'infoText';
+        if (config === 'lb3' && isRangedDPS)
+          severity = 'alertText';
+        else if (myElement === 'water')
+          severity = 'alertText';
+
+        const players = data.waterElementPlayers.map(
+          (player) => {
+            if (player === data.me)
+              return output.you!();
+            return data.party.member(player);
+          },
+        );
+        const msg = players?.join(', ');
+        const donut = output.waterOnPlayers!({ players: msg });
+
+        if (!fShort) {
+          if (config === 'lb3') {
+            const isNotRanged = data.role !== 'dps' || Util.isMeleeDpsJob(data.job);
+
+            const mech1 = isNotRanged
+              ? donut
+              : output.baitCrystal!({
+                crystal: water,
+                inout: output.out!(),
+              });
+
+            const mech2 = isNotRanged
+              ? output.roleStacks!()
+              : output.baitCrystal!({
+                crystal: fire,
+                inout: output.out!(),
+              });
+
+            return { [severity]: output.mechThenMech!({ mech1: mech1, mech2: mech2 }) };
+          }
+
+          if (config === 'sg3k') {
+            // Get player expected to be inner water bait
+            const players = data.waterElementPlayers.filter(
+              (player) => data.party.isDPS(player),
+            );
+            const player = data.party.member(players[0]);
+
+            const mech1 = myElement === 'fire'
+              ? output.getMiddleNearPlayer!({
+                player: player,
+              })
+              : myElement === 'water'
+              ? output.baitCrystal!({
+                crystal: water,
+                inout: data.role === 'dps' ? output.in!() : output.out!(),
+              })
+              : output.beNearWind!({ dir: wind });
+
+            const mech2 = myElement === 'fire'
+              ? output.knockbackToDir!({
+                facing: output[myWind ?? 'unknown']!({ name: output[waterDir]!() }),
+                dir: output[fireDir]!(),
+              })
+              : myElement === 'water'
+              ? output.getHitByDonut!()
+              : output.stackPartner!();
+
+            return { [severity]: output.mechThenMech!({ mech1: mech1, mech2: mech2 }) };
+          }
+        }
+        const exdeathName = exdeathLocaleNames[data.parserLang];
+        if (config === 'lb3') {
+          const isNotRanged = data.role !== 'dps' || Util.isMeleeDpsJob(data.job);
+
+          const mech1 = isNotRanged
+            ? donut
+            : output.baitCrystal!({
+              crystal: water,
+              inout: output.out!(),
+            });
+
+          const mech2 = Util.isRangedDpsJob(data.job)
+            ? output.baitJump!()
+            : output.beNearExdeath!({ name: exdeathName });
+
+          return { [severity]: output.mechThenMech!({ mech1: mech1, mech2: mech2 }) };
+        }
+
+        if (config === 'sg3k') {
+          // Get player expected to be inner water bait
+          const players = data.waterElementPlayers.filter(
+            (player) => data.party.isDPS(player),
+          );
+          const player = data.party.member(players[0]);
+          // Players will need to get to opposite side of Wind Crystal
+          const exDeathDir = windDirNum === undefined
+            ? 'unknown'
+            : Directions.outputFromIntercardNum((windDirNum + 2) % 4);
+
+          const mech1 = myElement === 'fire'
+            ? output.getMiddleNearPlayer!({
+              player: player,
+            })
+            : myElement === 'water'
+            ? output.baitCrystal!({
+              crystal: water,
+              inout: data.role === 'dps' ? output.in!() : output.out!(),
+            })
+            : output.beNearWind!({ dir: wind });
+
+          const mech2 = myElement === 'fire'
+            ? output.beNearExdeath!({ name: exdeathName })
+            : myElement === 'water'
+            ? output.knockbackToDir!({
+              facing: output[myWind ?? 'unknown']!({
+                name: output[waterDir]!(),
+              }),
+              dir: output[exDeathDir]!(),
+            })
+            : output.stackPartner!();
+
+          return { [severity]: output.mechThenMech!({ mech1: mech1, mech2: mech2 }) };
+        }
+
+        return {
+          [severity]: output.waterOnPlayersCrystalDirNum!({
+            donut: donut,
+            dir: water,
+            bait: output.baitWaterAoe!(),
+          }),
+        };
+      },
+    },
+    {
+      id: 'DMU P3 Long Crystal and Wind Crystal Locations',
+      // Inform that long is next, location it will Be
+      // One of these spells will trigger:
+      // BAF3 Stray Flames
+      // BAF6 Stray Spray
+      type: 'Ability',
+      netRegex: { id: ['BAF3', 'BAF6'], source: 'Chaos', capture: true },
+      condition: (data, matches) => {
+        const fShort = data.isFireShort;
+        const id = matches.id;
+        // Ensure this only outputs if expected crystal went off
+        return (fShort && id === 'BAF3') || (!fShort && id === 'BAF6');
+      },
+      durationSeconds: 27, // Duration of the first debuff
+      suppressSeconds: 99999,
+      infoText: (data, _matches, output) => {
+        const fShort = data.isFireShort;
+        const longCrystalDirNum = fShort
+          ? data.waterCrystalDirNum
+          : data.fireCrystalDirNum;
+        const windDirNum = data.windCrystalDirNum;
+
+        const longDir = longCrystalDirNum === undefined
+          ? 'unknown'
+          : Directions.outputFromIntercardNum(longCrystalDirNum);
+        const windDir = windDirNum === undefined
+          ? 'unknown'
+          : Directions.outputFromIntercardNum(windDirNum);
+
+        return output.crystals!({
+          long: fShort
+            ? output.water!({ dir: output[longDir]!() })
+            : output.fire!({ dir: output[longDir]!() }),
+          wind: output.wind!({ dir: output[windDir]!() }),
+        });
+      },
+      outputStrings: {
+        ...Directions.outputStringsIntercardDir,
+        fire: {
+          en: 'Fire ${dir}',
+          cn: '火 ${dir}',
+          ko: '불 ${dir}',
+        },
+        water: {
+          en: 'Water ${dir}',
+          cn: '水 ${dir}',
+          ko: '물 ${dir}',
+        },
+        wind: {
+          en: 'Wind ${dir}',
+          cn: '风 ${dir}',
+          ko: '바람 ${dir}',
+        },
+        crystals: {
+          en: '${long} => ${wind} (later)',
+          cn: '${long} => ${wind} (稍后)',
+          ko: '${long} => ${wind} (나중)',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Wind Crystal Next Flag',
+      // By the BAFF Shockwave, the next BAF3 Stray Flames / BAF6 Stray Spray
+      // Will mean we will need to resolve the wind crystal next
+      type: 'Ability',
+      netRegex: { id: 'BAFF', source: 'Chaos', capture: false },
+      suppressSeconds: 99999,
+      run: (data) => data.windCrystalNext = true,
+    },
+    {
+      id: 'DMU P3 Wind Crystal Location',
+      // Inform that wind is next
+      // One of these spells will trigger:
+      // BAF3 Stray Flames
+      // BAF6 Stray Spray
+      // For LB3 Config, defaulting to four 2-player stacks
+      // One 8-player stack is more popular and requires more mit
+      type: 'Ability',
+      netRegex: { id: ['BAF3', 'BAF6'], source: 'Chaos', capture: false },
+      condition: (data) => data.windCrystalNext,
+      suppressSeconds: 99999,
+      infoText: (data, _matches, output) => {
+        const windDirNum = data.windCrystalDirNum;
+        const config = data.triggerSetConfig.boa;
+        let windDir = 'unknown';
+        if (windDirNum !== undefined) {
+          if (config !== 'lb3') {
+            // Players form 4 2-person stacks around wind crystal
+            windDir = Directions.outputFromIntercardNum(windDirNum);
+          } else if (data.role === 'healer')
+            windDir = Directions.outputFromIntercardNum((windDirNum + 3) % 4); // Wrap-around
+          else if ((Util.isMeleeDpsJob(data.job) || data.role === 'tank'))
+            windDir = Directions.outputFromIntercardNum((windDirNum + 2) % 4); // Opposite of Wind Crystal
+          else
+            windDir = Directions.outputFromIntercardNum((windDirNum + 1) % 4); // Ranged DPS
+        }
+
+        return config !== 'lb3'
+          ? output.wind!({ dir: output[windDir]!() })
+          : output.knockbackToDir!({ dir: output[windDir]!() });
+      },
+      outputStrings: {
+        ...Directions.outputStringsIntercardDir,
+        wind: {
+          en: 'Knockback to Wind ${dir} (later)',
+          cn: '向 ${dir} 风击退(稍后)',
+          ko: '바람 ${dir}으로 넉백 (나중)',
+        },
+        knockbackToDir: {
+          en: 'Knockback to ${dir} (later)',
+          cn: '向 ${dir} 击退(稍后)',
+          ko: '${dir}으로 넉백 (나중)',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Headwind/Tailwind Cleanup',
+      // If players resolve winds prior to Exdeath's Vacuum Wave
+      // Long debuffs could get knocked back into the other crystal
+      // Short Debuffs could run to other crystal's donut if fire or stack/bait if water
+      // The remaining 4 players will have to resolve during knockback
+      // Note that each time these are lost, the wind crystal triggers nearest player with 2-person stack
+      type: 'LosesEffect',
+      netRegex: { effectId: ['642', '643'], capture: true },
+      condition: Conditions.targetIsYou(),
+      run: (data) => delete data.myWind,
+    },
+    {
+      id: 'DMU P3 Thunder III AOE',
+      type: 'StartsUsing',
+      netRegex: { id: 'BB12', source: 'Exdeath', capture: true },
+      durationSeconds: (_data, matches) => parseFloat(matches.castTime), // 7s castTime
+      infoText: (_data, matches, output) => {
+        const boss = matches.source;
+        return output.awayFromBoss!({ boss: boss });
+      },
+      outputStrings: {
+        awayFromBoss: {
+          en: 'Away from ${boss}',
+          cn: '远离 ${boss}',
+          ko: '${boss}에게서 멀리',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Thunder III Tankbuster',
+      // Tankbuster that targets nearest player and then nearest again after 3s
+      type: 'StartsUsing',
+      netRegex: { id: 'BB09', source: 'Exdeath', capture: true },
+      response: (data, matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = {
+          avoid: {
+            en: '${boss}: ${cleaves}',
+            cn: '${boss}: ${cleaves}',
+            ko: '${boss}: ${cleaves}',
+          },
+          tankCleaveNearThenSwap: {
+            en: 'Near ${boss}: ${cleave} => ${swap}',
+            cn: '靠近 ${boss}: ${cleave} => ${swap}}',
+            ko: '${boss} 근처: ${cleave} => ${swap}',
+          },
+          tankCleave: Outputs.tankCleave,
+          avoidTankCleaves: Outputs.avoidTankCleaves,
+          tankSwap: Outputs.tankSwap,
+        };
+
+        const severity = data.role === 'tank' || data.role === 'healer'
+          ? 'alertText'
+          : 'infoText';
+        const boss = matches.source;
+
+        if (data.role === 'tank')
+          return {
+            [severity]: output.tankCleaveNearThenSwap!({
+              boss: boss,
+              cleave: output.tankCleave!(),
+              swap: output.tankSwap!(),
+            }),
+          };
+
+        return {
+          [severity]: output.avoid!({
+            boss: boss,
+            cleaves: output.avoidTankCleaves!(),
+          }),
+        };
+      },
+    },
+    {
+      id: 'DMU P3 Thunder III Tank Swap',
+      type: 'Ability',
+      netRegex: { id: 'BB09', source: 'Exdeath', capture: true },
+      condition: (data) => data.role === 'tank',
+      suppressSeconds: 4,
+      alertText: (data, matches, output) => {
+        const boss = matches.source;
+        if (matches.target === data.me)
+          return output.awayFromBoss!({ boss: boss });
+        return output.beNearBoss!({ boss: boss });
+      },
+      outputStrings: {
+        beNearBoss: {
+          en: 'Be Near ${boss} (swap)',
+          cn: '靠近 ${boss} (交换)',
+          ko: '${boss} 근처로 (교대)',
+        },
+        awayFromBoss: {
+          en: 'Away from ${boss} (swap)',
+          cn: '远离 ${boss} (交换)',
+          ko: '${boss}에게서 멀리 (교대)',
         },
       },
     },
@@ -3735,17 +5370,857 @@ const triggerSet: TriggerSet<Data> = {
       },
     },
     {
-      id: 'DMU P3 Vaccuum Wave',
-      type: 'StartsUsing',
-      netRegex: { id: 'BB13', source: 'Chaos', capture: true },
-      infoText: (_data, matches, output) => {
-        return output.knockbackFromBoss!({ chaos: matches.source });
+      id: 'DMU P3 Ultima Blaster Collect',
+      // Starts from random cardinal/intercardinal then rotates either CW or CCW
+      // These are raidwide AOEs, but also include telegraphed lines and explosions
+      // Ability lines can have erroneous values, AbilityExtra has correct heading
+      // Entity that does these has BNpcID 4BFB, added shortly before
+      // 271 ActorSetPos and 261 CombatantMemory Change lines are updated just prior to the ability
+      type: 'AbilityExtra',
+      netRegex: { id: 'BAE3', capture: true },
+      condition: (data) => data.blasterRotation === undefined,
+      suppressSeconds: 1,
+      run: (data, matches) => {
+        const hdg2 = parseFloat(matches.heading);
+        // Get rotation of first and second Kefka blasters
+        const hdg1 = data.firstBlasterHdg;
+        if (hdg1 === undefined) {
+          data.firstBlasterHdg = hdg2;
+          data.firstBlasterDirNum = Directions.hdgTo8DirNum(hdg2);
+          // Return to get the next blaster
+          return;
+        }
+
+        // Get rotation where > 0 is counterclockwise and < 0 is clockwise
+        data.blasterRotation = Math.atan2(Math.sin(hdg2 - hdg1), Math.cos(hdg2 - hdg1));
+      },
+    },
+    {
+      id: 'DMU P3 Ultima Blaster Rotation',
+      type: 'AbilityExtra',
+      netRegex: { id: 'BAE3', capture: false },
+      condition: (data) => data.blasterRotation !== undefined,
+      durationSeconds: 10,
+      suppressSeconds: 99999,
+      infoText: (data, _matches, output) => {
+        const rotation = data.blasterRotation;
+        const dirNum = data.firstBlasterDirNum;
+        if (rotation === undefined || dirNum === undefined)
+          return;
+
+        // Will need 16Dir for positions later
+        const dir = Directions.outputFrom8DirNum(dirNum);
+
+        if (rotation > 0)
+          return output.clockwise!({ card: output[dir]!() });
+        if (rotation < 0)
+          return output.counterclockwise!({ card: output[dir]!() });
       },
       outputStrings: {
-        knockbackFromBoss: {
-          en: 'Knockback from ${chaos}',
-          ko: '${chaos}에서 넉백',
+        ...Directions.outputStrings8Dir,
+        clockwise: {
+          en: '<== ${card} Clockwise (Later)',
+          cn: '<== ${card} 顺时针 (稍后)',
+          ko: '<== ${card} 시계 방향 (나중)',
         },
+        counterclockwise: {
+          en: '${card} Counterclockwise (Later) ==>',
+          cn: '${card} 逆时针 (稍后) ==>',
+          ko: '${card} 반시계 방향 (나중) ==>',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Umbra Smash',
+      // At start of cast the target of BB00 Umbra Smash has been locked
+      // Instead of a timeline trigger, ues one of these abilities to trigger:
+      // BAFD Longitudinal Implosion
+      // BAFE  Latitudinal Implosion
+      type: 'Ability',
+      netRegex: { id: ['BAFD', 'BAFE'], source: 'Chaos', capture: false },
+      delaySeconds: 10,
+      suppressSeconds: 99999,
+      infoText: (_data, _matches, output) => output.baitJump!(),
+      outputStrings: {
+        baitJump: {
+          en: 'Bait Jump?',
+          de: 'Sprung ködern?',
+          fr: 'Attirez le saut ?',
+          ja: 'ジャンプ誘導?',
+          cn: '引导跳跃?',
+          ko: '점프 유도?',
+          tc: '引導跳躍?',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Vacuum Wave',
+      // If players have not yet resolved their headwinds, then they will need
+      // to do so:
+      // Headwind look at Exdeath
+      // Tailwind look away from Exdeath
+      //
+      // Party can Tank LB3 to survive stacking the winds
+      //
+      // castTime is 7.7s, but the kockback occurs slightly after
+      // Debuffs come off about 0.8s later
+      type: 'StartsUsing',
+      netRegex: { id: 'BB13', source: 'Exdeath', capture: true },
+      durationSeconds: (_data, matches) => parseFloat(matches.castTime) + 0.8,
+      alertText: (data, matches, output) => {
+        const windDirNum = data.windCrystalDirNum;
+        const windDir = windDirNum === undefined
+          ? 'unknown'
+          : data.triggerSetConfig.boa !== 'lb3'
+          ? Directions.outputFromIntercardNum(windDirNum)
+          : data.role === 'healer'
+          ? Directions.outputFromIntercardNum((windDirNum + 3) % 4) // Wrap-around
+          : Util.isMeleeDpsJob(data.job) || data.role === 'tank'
+          ? Directions.outputFromIntercardNum((windDirNum + 2) % 4) // Opposite of Wind Crystal
+          : Directions.outputFromIntercardNum((windDirNum + 1) % 4); // Ranged DPS
+        const exdeath = matches.source;
+
+        if (data.myWind === undefined) {
+          const knockback = output.knockbackFromExdeath!({ name: exdeath });
+          if (windDir === undefined)
+            return output.knockbackToCrystal!({
+              knockback: knockback,
+            });
+          return output.knockbackToDir!({
+            knockback: knockback,
+            dir: output[windDir]!(),
+          });
+        }
+
+        const knockbackFacing = output.knockbackFromFacingExdeath!({
+          facing: output[data.myWind]!({ name: exdeath }),
+        });
+
+        if (windDir === undefined)
+          return output.knockbackToCrystal!({
+            knockback: knockbackFacing,
+          });
+        return output.knockbackToDir!({
+          knockback: knockbackFacing,
+          dir: output[windDir]!(),
+        });
+      },
+      outputStrings: {
+        ...Directions.outputStringsIntercardDir,
+        tail: {
+          en: 'Face ${name}',
+          cn: '面向 ${name}',
+          ko: '${name} 바라보기',
+        },
+        head: Outputs.lookAwayFromTarget,
+        knockbackFromExdeath: {
+          en: 'Knockback from ${name}',
+          cn: '被${name}击退',
+          ko: '${name}에서 넉백',
+        },
+        knockbackFromFacingExdeath: {
+          en: 'Knockback from + ${facing}',
+          cn: '击退+${facing}',
+          ko: '넉백 + ${facing}',
+        },
+        knockbackToDir: {
+          en: '${knockback} to ${dir}',
+          cn: '${knockback} 到 ${dir}',
+          ko: '${knockback}, ${dir}으로',
+        },
+        knockbackToCrystal: {
+          en: '${knockback} to Crystal',
+          cn: '${knockback} 到水晶',
+          ko: '${knockback}, 수정으로',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Vacuum Wave Tank LB3',
+      type: 'StartsUsing',
+      netRegex: { id: 'BB13', source: 'Exdeath', capture: true },
+      condition: (data) => {
+        return data.role === 'tank' &&
+          data.triggerSetConfig.boa === 'lb3';
+      },
+      delaySeconds: (_data, matches) => parseFloat(matches.castTime) - 2, // 8s castTime, damage expected 3.9s after cast
+      alarmText: (_data, _matches, output) => output.text!(),
+      outputStrings: {
+        text: {
+          en: 'TANK LB!!',
+          de: 'TANK LB!!',
+          fr: 'LB TANK !!',
+          ja: 'タンクLB!!',
+          cn: '坦克LB!!',
+          ko: '탱리밋!!',
+          tc: '坦克LB!!',
+        },
+      },
+    },
+    {
+      id: 'DMU P1 Ultima Blaster Location',
+      // Nearest inter-inter cardinal opposite that of first blaster
+      // Could also account for player missing a marker as these are added sequentially
+      type: 'HeadMarker',
+      netRegex: {
+        id: [
+          headMarkerData['limitCutBlue1'],
+          headMarkerData['limitCutRed2'],
+          headMarkerData['limitCutBlue3'],
+          headMarkerData['limitCutRed4'],
+          headMarkerData['limitCutBlue5'],
+          headMarkerData['limitCutRed6'],
+          headMarkerData['limitCutBlue7'],
+          headMarkerData['limitCutRed8'],
+        ],
+        capture: true,
+      },
+      condition: Conditions.targetIsYou(),
+      durationSeconds: 12,
+      infoText: (data, matches, output) => {
+        const blasterNumberMap: { [id: string]: number } = {
+          '0150': 1,
+          '0151': 2,
+          '0152': 3,
+          '0153': 4,
+          '01B5': 5,
+          '01B6': 6,
+          '01B7': 7,
+          '01B8': 8,
+        };
+        const blasterDirNum = data.firstBlasterDirNum;
+        const rotation = data.blasterRotation;
+        const id = matches.id;
+        const myNum = blasterNumberMap[id];
+        if (myNum === undefined)
+          return;
+
+        if (blasterDirNum === undefined || rotation === undefined || rotation === 0)
+          return output.num!({ num: myNum });
+
+        // Subtract 1 from ourself as 1 is 0th position
+        const adjNum = (myNum - 1) * 2; // Convert our number to 16Dir format
+        const adjBlaster = blasterDirNum * 2; // Convert blasterDirNum to 16Dir format
+
+        // Boss is at an intercard, so +1 or -1 to get inter-inter safe spot
+        const adjustedDirNum = rotation > 0
+          ? (adjNum + adjBlaster + 1) % 16 // Clockwise
+          : ((adjBlaster - 1 - adjNum) + 16) % 16; // Counterclock
+
+        // Find inter-inter cardinal
+        const safeDir = Directions.outputFrom16DirNum(adjustedDirNum);
+        return output.text!({
+          num: output.num!({ num: myNum }),
+          dir: output[safeDir]!(),
+        });
+      },
+      outputStrings: {
+        ...Directions.outputStrings16Dir,
+        num: {
+          en: '#${num}',
+          de: '#${num}',
+          fr: '#${num}',
+          ja: '${num}番',
+          cn: '#${num}',
+          ko: '${num}번째',
+          tc: '#${num}',
+        },
+        text: {
+          en: '${num}: ${dir}',
+          cn: '${num}: ${dir}',
+          ko: '${num}: ${dir}',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Max Collect ID',
+      // Need the Boss' ID to know which 273 lines to be looking at for later
+      type: 'StartsUsing',
+      netRegex: { id: 'BAE5', source: 'Kefka', capture: true },
+      run: (data, matches) => data.kefkaId = matches.sourceId,
+    },
+    {
+      id: 'DMU P3 In Line Debuff Collector',
+      // BBC First in Line
+      // BBD Second in line
+      // BBE Third in Line
+      type: 'GainsEffect',
+      netRegex: { effectId: ['BBC', 'BBD', 'BBE'] },
+      run: (data, matches) => {
+        const effectToNum: { [effectId: string]: number } = {
+          BBC: 1,
+          BBD: 2,
+          BBE: 3,
+        } as const;
+        const num = effectToNum[matches.effectId];
+        if (num === undefined)
+          return;
+        data.inLine[matches.target] = num;
+      },
+    },
+    {
+      id: 'DMU P3 Accretion Collector',
+      // Will be applied to 1 DPS and 1 Healer
+      // One will have First in Line, the other will have Second in Line
+      type: 'GainsEffect',
+      netRegex: { effectId: '644', capture: true },
+      delaySeconds: (data) => {
+        if (data.triggerSetConfig.accretion === 'line')
+          return 0.1; // Delay for In Line debuffs
+        return 0;
+      },
+      run: (data, matches) => {
+        const target = matches.target;
+        const first = data.triggerSetConfig.accretion === 'line'
+          ? data.inLine[target] === 1
+          : data.party.isHealer(target);
+        if (first)
+          data.firstAccretion = target;
+        else
+          data.secondAccretion = target;
+
+        // Store for Black Hole Order
+        if (data.me === target)
+          data.hadAccretion = true;
+      },
+    },
+    {
+      id: 'DMU P3 In Line Debuff + Accretion 1',
+      type: 'GainsEffect',
+      netRegex: { effectId: ['BBC', 'BBD', 'BBE'], capture: false },
+      delaySeconds: 0.2, // Delay for in Line Collect and Accretion Collect
+      durationSeconds: 5,
+      suppressSeconds: 1,
+      infoText: (data, _matches, output) => {
+        const myNum = data.inLine[data.me];
+        if (myNum === undefined)
+          return;
+
+        // Let healers know Accretion order
+        // String may be too long to provide list of partners
+        if (data.role === 'healer') {
+          const first = data.firstAccretion;
+          const second = data.secondAccretion;
+          const player1 = first === data.me
+            ? output.you!()
+            : data.party.member(first);
+          const player2 = second === data.me
+            ? output.you!()
+            : data.party.member(second);
+
+          return output.accretionHealer!({
+            num: myNum,
+            player1: player1,
+            player2: player2,
+          });
+        }
+
+        // Rest of players will get partners
+        const partners = [];
+        for (const [name, num] of Object.entries(data.inLine))
+          if (num === myNum && name !== data.me)
+            partners.push(data.party.member(name));
+        const msg = partners?.join(', ');
+
+        return output.text!({ num: myNum, players: msg });
+      },
+      outputStrings: {
+        you: {
+          en: 'YOU',
+          cn: '你',
+          ko: '나',
+        },
+        text: {
+          en: '${num} (with ${players})',
+          de: '${num} (mit ${players})',
+          fr: '${num} (avec ${players})',
+          ja: '${num} (${players})',
+          cn: '${num} (与${players})',
+          ko: '${num} (+ ${players})',
+          tc: '${num} (與${players})',
+        },
+        accretionHealer: {
+          en: '${num}: Accretion on ${player1} => ${player2}',
+          cn: '${num}: 泥土点 ${player1} => ${player2}',
+          ko: '${num}: 혼돈의 진흙 ${player1} => ${player2}',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Accretion Cleanup',
+      type: 'LosesEffect',
+      netRegex: { effectId: '644', capture: true },
+      run: (data, matches) => {
+        const target = matches.target;
+        if (target === data.firstAccretion)
+          delete data.firstAccretion;
+        // There is no one else it could be but second
+        else
+          delete data.secondAccretion;
+      },
+    },
+    {
+      id: 'DMU P3 Accretion 2',
+      // Cleansing 644 Accretion or 154E Primordial Crust triggers BAFA Earthquake
+      // on all but the player that had Accretion
+      // BAFA Earthquake targets receive D2C Earth Resistance Down II (1.96s)
+      // Utilizing D2C Earth Resistance Down II to call for healing next player
+      // NOTE: This will still trigger if 154E Primordial Crust is cleansed early
+      type: 'GainsEffect',
+      netRegex: { effectId: 'D2C', capture: true },
+      condition: (data) => {
+        return data.firstAccretion !== undefined || data.secondAccretion !== undefined;
+      },
+      delaySeconds: (_data, matches) => parseFloat(matches.duration),
+      suppressSeconds: 1,
+      response: (data, _matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = {
+          healPlayerFull: {
+            en: 'Heal ${player} to full',
+            de: 'Heile ${player} voll',
+            fr: 'Soin complet sur ${player}',
+            ja: '${player} を全回復して',
+            cn: '奶满${player}',
+            ko: '완전 회복: ${player}',
+            tc: '奶滿${player}',
+          },
+        };
+        const first = data.firstAccretion;
+        const second = data.secondAccretion;
+        const player = first !== undefined
+          ? first
+          : second !== undefined
+          ? second
+          : undefined;
+
+        // This happens if players get cleansed within the delaySeconds, likely causing a wipe
+        if (player === undefined)
+          return;
+
+        const severity = data.role === 'healer' ? 'alertText' : 'infoText';
+
+        return {
+          [severity]: output.healPlayerFull!({
+            player: data.party.member(player),
+          }),
+        };
+      },
+    },
+    {
+      id: 'DMU P3 Boss Teleport Collect',
+      // About 0.4s prior to a 273 line, the boss teleports and this data is available from 271/261 lines
+      // 2.2s~2.5s later boss starts casting Slap Happy/Look upon Me and Despair
+      // For BAE6/BAE7 Slap Happy
+      // Boss' position data is (100, 100)
+      // 4 Invisible entities via 03 AddCombatant log lines correlate to the slap AoEs
+      // spawn at time of StartsUsing. These are also ordered in the order they occur.
+      //
+      // For BAEC/BAED Look upon Me and Despair, boss also teleports
+      // This could be necessary to call which black holes to grab later
+      type: 'ActorControlExtra',
+      netRegex: { category: '0197', param1: '1E44', capture: true },
+      condition: (data, matches) => matches.id === data.kefkaId,
+      delaySeconds: 0.1,
+      run: (data) => {
+        // Get Boss, he has Unknown_9E8 buff and same one that casts Max
+        const bossId = data.kefkaId ?? 0;
+
+        const actor = data.actorPositions[bossId];
+        if (actor === undefined)
+          return;
+
+        data.kefkaTeleportDirNum = (Directions.hdgTo8DirNum(actor.heading) + 4) % 8;
+      },
+    },
+    {
+      id: 'DMU P3 Boss Teleport Location',
+      // About 0.4s prior to a 273 line, the boss teleports and this data is available from 271/261 lines
+      // 2.2s later boss starts casting Slap Happy/Look upon Me and Despair
+      type: 'ActorControlExtra',
+      netRegex: { category: '0197', param1: '1E44', capture: true },
+      condition: (data, matches) => matches.id === data.kefkaId && data.nothingnessTracker !== 9,
+      delaySeconds: 0.1,
+      infoText: (data, _matches, output) => {
+        // Get Boss, he has Unknown_9E8 buff and same one that casts Max
+        const bossId = data.kefkaId ?? 0;
+
+        const actor = data.actorPositions[bossId];
+        if (actor === undefined)
+          return;
+        const dirNum = (Directions.hdgTo8DirNum(actor.heading) + 4) % 8;
+        const dir = Directions.outputFrom8DirNum(dirNum);
+
+        return output.text!({ dir: output[dir]!() });
+      },
+      outputStrings: {
+        ...Directions.outputStrings8Dir,
+        text: {
+          en: '${dir} Kefka',
+          cn: '${dir} 凯夫卡',
+          ko: '${dir} 케프카',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Slap Happy',
+      // BAE6 Slap Happy: Boss slaps his right 3 times (party cleave) + left once
+      // BAE7 Slap Happy: Boss slaps his left 3 times (role cleaves) + right once
+      // Boss can be in different cardinal/intercardinals
+      type: 'StartsUsing',
+      netRegex: { id: ['BAE6', 'BAE7'], source: 'Kefka', capture: true },
+      alertText: (_data, matches, output) => {
+        const isRightSlap = matches.id === 'BAE6';
+
+        return output.slapDirMechThenOut!({
+          dir: isRightSlap ? output.right!() : output.left!(),
+          mech: isRightSlap
+            ? output.partyStack!()
+            : output.roleStacks!(),
+          out: output.outOfMiddle!(),
+        });
+      },
+      outputStrings: {
+        left: Outputs.left,
+        right: Outputs.right,
+        outOfMiddle: {
+          en: 'Out Of Middle',
+          de: 'Raus aus der Mitte',
+          fr: 'Sortez du milieu',
+          ja: '横へ',
+          cn: '远离中间',
+          ko: '가운데 피하기',
+          tc: '遠離中間',
+        },
+        partyStack: {
+          en: 'Party Stack',
+          de: 'In der Gruppe sammeln',
+          fr: 'Package en groupe',
+          ja: 'あたまわり',
+          cn: '人群分摊',
+          ko: '본대 쉐어',
+          tc: '分攤',
+        },
+        roleStacks: {
+          en: 'Role Stacks',
+          de: 'Rollengruppe sammeln',
+          fr: 'Package par rôle',
+          cn: '职能分摊',
+          ko: '역할별 쉐어',
+          tc: '職能分攤',
+        },
+        slapDirMechThenOut: {
+          en: '${dir} => ${mech} + ${out}',
+          cn: '${dir} => ${mech} + ${out}',
+          ko: '${dir} => ${mech} + ${out}',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Black Hole Tracker',
+      // 11 are added with 0.2s of BAFB Black Hole Ability
+      // Both 261 CombatantMemory Add and 03 AddCombatant are available
+      // There are also 272 NPCSpawnExtra lines
+      // These have BNpcID 4C38
+      // They should only spawn at cardinals
+      // Interestingly, they have differing headings as well
+      // Spawn Location Example:
+      //             (100, 83)
+      //    (94.83, 87.53)
+      //     (93.64, 93.64) (106.36, 93.64)
+      //                        (112.47, 94.83)
+      //     (93.64, 106.36)(106.36, 106.36)
+      // (87.53, 105.17)
+      //                            (117, 100)
+      //                (105.17, 112.47)
+      //             (100, 117)
+      type: 'AddedCombatant',
+      netRegex: { name: 'Black Hole', capture: true },
+      run: (data, matches) => {
+        const x = parseFloat(matches.x);
+        const y = parseFloat(matches.y);
+        const dirNum = Directions.xyTo4DirNum(x, y, centerX, centerY);
+
+        // Storing as dirNum to be sorted later once we have tethers
+        data.blackHoleIdDirNums[matches.id] = dirNum;
+      },
+    },
+    {
+      id: 'DMU P3 Nothingness Counter',
+      // There are 10 sets of Nothingness from Black Holes to soak
+      // They always spawn on a cardinal
+      // The Nothingness beams should be baited cw or ccw for melee uptime
+      // Getting hit by Nothingness gives 154C Unbecoming
+      // If hit by Nothingness with 154C Unbecoming, it becomes 154D Meanest Existence
+      // If hit by Nothingness with 154D Meanest Existence, lethal damage is taken which
+      // expires 154E Primordial Crust causing an BAFA Earthquake AOE
+      //
+      // Accretions Resolve => Slap Happy
+      // Black Hole Set 1 spawns 1 Black Hole
+      // 1 => 1 Nothingness (Taken by a 1)
+      // Black Holes Set 2 spawns 2 Black Holes
+      // 2 => 2 Nothingness (Taken by two 1s)
+      // TBs => Damning Edict => Slap Happy
+      // Black Hole Set 3 spawns 3 Black Holes
+      // 3 => 3 Nothingness (Taken by two 1s and Accretion 1), 1 player swaps tether
+      // 4 => 3 Nothingness (Taken by one 1, Accretion 1, and one 2), 1 player swaps tether
+      // 5 => 3 Nothingness (Taken by two 2s and Accretion 1)
+      // Damning Edict => Look upon Me and Despair => TBs
+      // Black Hole Set 3 spawns 3 Black Holes
+      // 6 => 3 Black Holes (Taken by two 2s and Accretion 2), 1 player swaps tether
+      // 7 => 3 Black Holes (Taken by one 3, one 2, and Accretion 2), 1 player swaps tether
+      // 8 => 3 Black Holes (Taken by two 3s, and Accretion 2)
+      // Lat/Long (White Hole cast here too) => Slap Happy  => Look upon Me and Despair
+      // Black Hole Set 5 spawns 2 Black Holes
+      // 9 => 2 Black Holes (Taken by two 3s)
+      // Black Hole Set 6 spawns 1 Black Hole
+      // 10 => 1 Black Hole (Taken by last 3)
+      // However, there are will be 10 BAFC Nothingness casts
+      // Using BAFC Nothingness to track which set we are on
+      type: 'Ability',
+      netRegex: { id: 'BAFC', source: 'Black Hole', capture: false },
+      suppressSeconds: 1,
+      run: (data) => {
+        data.nothingnessTracker = data.nothingnessTracker + 1;
+
+        // Reset the tether dirs for next round of black hole adds
+        if (
+          data.nothingnessTracker === 2 || data.nothingnessTracker === 3 ||
+          data.nothingnessTracker === 6 || data.nothingnessTracker === 9 ||
+          data.nothingnessTracker === 10
+        ) {
+          delete data.blackHoleTetherDisable; // For SpawnNpcExtra triggers with >1 black hole
+          data.blackHoleTetherDirNums = [];
+        }
+      },
+    },
+    {
+      id: 'DMU P3 Black Hole Tether Collect (NetworkTether)',
+      type: 'Tether',
+      netRegex: { id: headMarkerData['blackHoleTether'], capture: true },
+      condition: (data) => {
+        // No need to collect the single tether sets
+        return data.nothingnessTracker !== 1 && data.nothingnessTracker !== 10;
+      },
+      run: (data, matches) => {
+        const dirNum = data.blackHoleIdDirNums[matches.sourceId];
+        if (dirNum === undefined)
+          return;
+
+        // Ignore the tether if it is already stored
+        // This allows for collection of tethers if instantaneous swap
+        if (!data.blackHoleTetherDirNums.includes(dirNum))
+          data.blackHoleTetherDirNums.push(dirNum);
+      },
+    },
+    {
+      id: 'DMU P3 Black Hole Tether Collect (SpawnNpcExtra)',
+      // 272 SpawnNpcExtra line tether has the tether first
+      type: 'SpawnNpcExtra',
+      netRegex: { tetherId: headMarkerData['blackHoleTether'], capture: true },
+      delaySeconds: 0.1, // Delay for AddCombatant
+      run: (data, matches) => {
+        const dirNum = data.blackHoleIdDirNums[matches.id];
+        if (dirNum === undefined)
+          return;
+
+        // Ignore the tether if it is already stored
+        // This allows for collection of tethers if instantaneous swap
+        if (!data.blackHoleTetherDirNums.includes(dirNum))
+          data.blackHoleTetherDirNums.push(dirNum);
+      },
+    },
+    {
+      id: 'DMU P3 Black Hole 1, Nothingness 1',
+      // One Black Hole spawns, causes a single Nothingness
+      type: 'SpawnNpcExtra',
+      netRegex: { tetherId: headMarkerData['blackHoleTether'], capture: true },
+      condition: (data) => data.nothingnessTracker === 1,
+      delaySeconds: 0.1, // Delay for AddedCombatant
+      suppressSeconds: 99999,
+      response: (data, matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = blackHoleOutputStrings;
+
+        const config = data.triggerSetConfig.blackHole;
+        const relConfig = data.triggerSetConfig.blackHoleTether;
+        const num = output.num!({ num: data.nothingnessTracker });
+        const kefkaDir = data.kefkaTeleportDirNum;
+        const dirNum = data.blackHoleIdDirNums[matches.id];
+        const dir = dirNum === undefined
+          ? 'unknown'
+          : Directions.outputFromCardinalNum(dirNum);
+
+        if (config !== 'none') {
+          const role = config === 'sda' || config === 'modified'
+            ? data.role !== 'dps'
+            : data.role === 'dps';
+          const relDir = relConfig === 'true' ? dir : 'clockwiseOne';
+          if (data.inLine[data.me] === 1 && !data.hadAccretion && role)
+            return {
+              alertText: output.getDirTether!({
+                num: num,
+                dir: output[relDir]!(),
+              }),
+            };
+
+          // Provide heads up to next player
+          // Could tell to 1st tether but it may add confusion
+          if (data.inLine[data.me] === 1 && !data.hadAccretion && !role) {
+            // Next set will start accross from dir
+            const dirNum1 = dirNum === undefined
+              ? undefined
+              : (dirNum + 2) % 4;
+            // Second one is next clockwise
+            const dirNum2 = dirNum === undefined
+              ? undefined
+              : (dirNum + 3) % 4;
+
+            // If can't get dirNum, default to relative
+            if (dirNum1 === undefined || dirNum2 === undefined) {
+              if (config === 'modified')
+                return {
+                  infoText: output.middleThenGetBothTethers!({ num: num }),
+                };
+              const dir = data.role === 'dps'
+                ? 'clockwiseOne'
+                : 'clockwiseTwo';
+              return {
+                infoText: output.middleThenGetDirTether!({
+                  num: num,
+                  dir: output[dir]!(),
+                }),
+              };
+            }
+            const dirNums = [dirNum1, dirNum2];
+
+            // Convert Kefka dir to 4Dir
+            const startDir = kefkaDir !== undefined
+              ? Math.round(kefkaDir / 2) % 4
+              : -1;
+            const sorted = startDir !== -1 ? getCWOrderFromN(startDir, dirNums) : [];
+            const dir1 = sorted[0] !== undefined
+              ? Directions.outputFromCardinalNum(sorted[0])
+              : 'unknown';
+            const dir2 = sorted[1] !== undefined
+              ? Directions.outputFromCardinalNum(sorted[1])
+              : 'unknown';
+
+            if (config === 'modified') {
+              return {
+                infoText: relConfig === 'true'
+                  ? output.middleThenGetDirTethers!({
+                    num: num,
+                    dir1: output[dir1]!(),
+                    dir2: output[dir2]!(),
+                  })
+                  : output.middleThenGetBothTethers!({ num: num }),
+              };
+            }
+
+            const dir = data.role === 'dps' ? dir1 : dir2;
+            const relDir = relConfig === 'true'
+              ? dir
+              : data.role === 'dps'
+              ? 'clockwiseOne'
+              : 'clockwiseTwo';
+
+            // DPS #1 (DSA), Support #1 (SDA)
+            return {
+              infoText: output.middleThenGetDirTether!({
+                num: num,
+                dir: output[relDir]!(),
+              }),
+            };
+          }
+        }
+        return {
+          infoText: output.oneBlackHole!({
+            num: num,
+            dir: output[dir]!(),
+          }),
+        };
+      },
+    },
+    {
+      id: 'DMU P3 Black Hole 2, Nothingness 2',
+      // Two Black Holes spawn, each cause a single Nothingness
+      // Black Hole actors are reused from previous Nothingness tethers
+      type: 'Tether',
+      netRegex: { id: headMarkerData['blackHoleTether'], capture: false },
+      condition: (data) => {
+        return data.nothingnessTracker === 2 && data.blackHoleTetherDirNums.length === 2;
+      },
+      suppressSeconds: 99999,
+      response: (data, _matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = blackHoleOutputStrings;
+
+        const config = data.triggerSetConfig.blackHole;
+        const relConfig = data.triggerSetConfig.blackHoleTether;
+        const num = output.num!({ num: data.nothingnessTracker });
+        const kefkaDir = data.kefkaTeleportDirNum;
+        const dirNums = data.blackHoleTetherDirNums;
+
+        // Convert Kefka dir to 4Dir
+        const startDir = kefkaDir !== undefined
+          ? Math.round(kefkaDir / 2) % 4
+          : -1;
+        const sorted = startDir !== -1 ? getCWOrderFromN(startDir, dirNums) : [];
+        const dir1 = sorted[0] !== undefined
+          ? Directions.outputFromCardinalNum(sorted[0])
+          : 'unknown';
+        const dir2 = sorted[1] !== undefined
+          ? Directions.outputFromCardinalNum(sorted[1])
+          : 'unknown';
+
+        if (config === 'dsa' || config === 'sda') {
+          const role = config === 'dsa' ? data.role === 'dps' : data.role !== 'dps';
+          const dir = data.role === 'dps' ? dir1 : dir2;
+          const relDir = relConfig === 'true'
+            ? dir
+            : data.role === 'dps'
+            ? 'clockwiseOne'
+            : 'clockwiseTwo';
+          if (data.inLine[data.me] === 1 && !data.hadAccretion) {
+            if (role)
+              return {
+                alertText: output.getDirTether!({
+                  num: num,
+                  dir: output[relDir]!(),
+                }),
+              };
+            // DPS #1 (DSA), Support #1 (SDA)
+            return {
+              alertText: output.getDirTether!({
+                num: num,
+                dir: output[relDir]!(),
+              }),
+            };
+          }
+        } else if (
+          config === 'modified' && data.inLine[data.me] === 1 &&
+          !data.hadAccretion && data.role === 'dps'
+        )
+          return {
+            alertText: relConfig === 'true'
+              ? output.getDirTethers!({
+                num: num,
+                dir1: output[dir1]!(),
+                dir2: output[dir2]!(),
+              })
+              : output.getBothTethers!({
+                num: num,
+              }),
+          };
+
+        return {
+          infoText: output.twoBlackHoles!({
+            num: num,
+            dir1: output[dir1]!(),
+            dir2: output[dir2]!(),
+          }),
+        };
       },
     },
     {
@@ -3758,9 +6233,2271 @@ const triggerSet: TriggerSet<Data> = {
       outputStrings: {
         getBehindTarget: {
           en: 'Get Behind ${target}',
+          cn: '到${target}背后',
           ko: '${target} 뒤로',
         },
       },
+    },
+    {
+      id: 'DMU P3  Black Hole 3, Nothingness 3',
+      // Three Black Holes spawn, each cause three Nothingness
+      // Needs a boolean to prevent extra firing when delay is added
+      type: 'SpawnNpcExtra',
+      netRegex: { tetherId: headMarkerData['blackHoleTether'], capture: false },
+      condition: (data) => data.nothingnessTracker === 3,
+      delaySeconds: 0.1, // Delay for AddCombatant
+      response: (data, _matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = blackHoleOutputStrings;
+
+        if (data.blackHoleTetherDirNums.length !== 3 || data.blackHoleTetherDisable)
+          return;
+        data.blackHoleTetherDisable = true;
+
+        const config = data.triggerSetConfig.blackHole;
+        const relConfig = data.triggerSetConfig.blackHoleTether;
+        const num = output.num!({ num: data.nothingnessTracker });
+        const hadAccretion = data.hadAccretion;
+        const line = data.inLine[data.me];
+        const kefkaDir = data.kefkaTeleportDirNum;
+        const dirNums = data.blackHoleTetherDirNums;
+
+        // Convert Kefka dir to 4Dir
+        const startDir = kefkaDir !== undefined
+          ? Math.round(kefkaDir / 2) % 4
+          : -1;
+        const sorted = startDir !== -1 ? getCWOrderFromN(startDir, dirNums) : [];
+        const dir1 = sorted[0] !== undefined
+          ? Directions.outputFromCardinalNum(sorted[0])
+          : 'unknown';
+        const dir2 = sorted[1] !== undefined
+          ? Directions.outputFromCardinalNum(sorted[1])
+          : 'unknown';
+        const dir3 = sorted[2] !== undefined
+          ? Directions.outputFromCardinalNum(sorted[2])
+          : 'unknown';
+
+        if (config !== 'none') {
+          if (line === 1) {
+            if (hadAccretion) {
+              const relDir = relConfig === 'true' ? dir3 : 'clockwiseThree';
+              return {
+                alertText: output.getDirTether!({
+                  num: num,
+                  dir: output[relDir]!(),
+                }),
+              };
+            }
+            if (data.role === 'dps') {
+              const relDir = relConfig === 'true' ? dir1 : 'clockwiseOne';
+              return {
+                alertText: output.getDirTether!({
+                  num: num,
+                  dir: output[relDir]!(),
+                }),
+              };
+            }
+            // Support #1
+            const relDir = relConfig === 'true' ? dir2 : 'clockwiseTwo';
+            return {
+              alertText: output.getDirTether!({
+                num: num,
+                dir: output[relDir]!(),
+              }),
+            };
+          }
+
+          if (line === 2 && !hadAccretion) {
+            // Additional info for the next person grabbing
+            const dsaOrModified = config === 'dsa' || config === 'modified';
+            const roleSwap = dsaOrModified ? data.role === 'dps' : data.role !== 'dps';
+            if (roleSwap) {
+              // Tether to grab will change depending on role
+              const sortedDir = dsaOrModified ? sorted[0] : sorted[1];
+              const dir = sortedDir !== undefined
+                ? Directions.outputFromCardinalNum(sortedDir)
+                : 'unknown';
+              const relDir = relConfig === 'true'
+                ? dir
+                : dsaOrModified
+                ? 'clockwiseOne'
+                : 'clockWiseTwo';
+
+              // We could get the player they are taking from, but seems unnecessary at the time
+              return {
+                infoText: output.middleThenGetDirTether!({
+                  num: num,
+                  dir: output[relDir]!(),
+                }),
+              };
+            }
+          }
+        }
+
+        return {
+          infoText: output.threeBlackHoles!({
+            num: num,
+            dir1: output[dir1]!(),
+            dir2: output[dir2]!(),
+            dir3: output[dir3]!(),
+          }),
+        };
+      },
+    },
+    {
+      id: 'DMU P3 Black Hole 3, Nothingness 4',
+      // One player needs to swap tether
+      type: 'Ability',
+      netRegex: { id: 'BAFC', source: 'Black Hole', capture: false },
+      condition: (data) => data.nothingnessTracker === 4,
+      suppressSeconds: 99999,
+      response: (data, _matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = blackHoleOutputStrings;
+
+        const config = data.triggerSetConfig.blackHole;
+        const relConfig = data.triggerSetConfig.blackHoleTether;
+        const tracker = data.nothingnessTracker;
+        const num = output.num!({ num: tracker });
+        const hadAccretion = data.hadAccretion;
+        const line = data.inLine[data.me];
+
+        if (config !== 'none') {
+          const dsaOrModified = config === 'dsa' || config === 'modified';
+          const roleKeep = dsaOrModified ? data.role !== 'dps' : data.role === 'dps';
+          if (line === 1) {
+            if (hadAccretion || roleKeep)
+              return { infoText: output.keepTether!({ num: num }) };
+            // DPS #1 (DSA/Modified), Support #1 (SDA)
+            return { alertText: output.passTether!({ num: num }) };
+          }
+          if (line === 2 && !hadAccretion) {
+            const roleSwap = dsaOrModified ? data.role === 'dps' : data.role !== 'dps';
+            const kefkaDir = data.kefkaTeleportDirNum;
+            const dirNums = data.blackHoleTetherDirNums;
+
+            // Convert Kefka dir to 4Dir
+            const startDir = kefkaDir !== undefined
+              ? Math.round(kefkaDir / 2) % 4
+              : -1;
+            const sorted = startDir !== -1 ? getCWOrderFromN(startDir, dirNums) : [];
+            if (roleSwap) {
+              // Tether to grab will change depending on role
+              const sortedDir = dsaOrModified ? sorted[0] : sorted[1];
+              const dir = sortedDir !== undefined
+                ? Directions.outputFromCardinalNum(sortedDir)
+                : 'unknown';
+              const relDir = relConfig === 'true'
+                ? dir
+                : dsaOrModified
+                ? 'clockwiseOne'
+                : 'clockWiseTwo';
+
+              // We could get the player they are taking from, but seems unnecessary at the time
+              return {
+                alertText: output.getDirTether!({
+                  num: num,
+                  dir: output[relDir]!(),
+                }),
+              };
+            }
+            // Additional info for the next person grabbing
+            // Tether to grab will change depending on role
+            const sortedDir2 = dsaOrModified ? sorted[1] : sorted[0];
+            const dir2 = sortedDir2 !== undefined
+              ? Directions.outputFromCardinalNum(sortedDir2)
+              : 'unknown';
+            const relDir = relConfig === 'true'
+              ? dir2
+              : dsaOrModified
+              ? 'clockwiseTwo'
+              : 'clockWiseOne';
+
+            return {
+              infoText: output.middleThenGetDirTether!({
+                num: num,
+                dir: output[relDir]!(),
+              }),
+            };
+          }
+        }
+
+        return { infoText: output.nothing!({ num: tracker }) };
+      },
+    },
+    {
+      id: 'DMU P3 Black Hole 3, Nothingness 5',
+      // One player needs to swap tether
+      type: 'Ability',
+      netRegex: { id: 'BAFC', source: 'Black Hole', capture: false },
+      condition: (data) => data.nothingnessTracker === 5,
+      suppressSeconds: 99999,
+      response: (data, _matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = blackHoleOutputStrings;
+
+        const config = data.triggerSetConfig.blackHole;
+        const relConfig = data.triggerSetConfig.blackHoleTether;
+        const tracker = data.nothingnessTracker;
+        const num = output.num!({ num: tracker });
+        const hadAccretion = data.hadAccretion;
+        const line = data.inLine[data.me];
+
+        if (config !== 'none') {
+          const dsaOrModified = config === 'dsa' || config === 'modified';
+          const roleSwap = dsaOrModified ? data.role !== 'dps' : data.role === 'dps';
+          if (line === 1) {
+            if (hadAccretion)
+              return { infoText: output.keepTether!({ num: num }) };
+            if (roleSwap)
+              return { alertText: output.passTether!({ num: num }) };
+          }
+          if (line === 2 && !hadAccretion) {
+            if (roleSwap) {
+              const kefkaDir = data.kefkaTeleportDirNum;
+              const dirNums = data.blackHoleTetherDirNums;
+
+              // Convert Kefka dir to 4Dir
+              const startDir = kefkaDir !== undefined
+                ? Math.round(kefkaDir / 2) % 4
+                : -1;
+              const sorted = startDir !== -1 ? getCWOrderFromN(startDir, dirNums) : [];
+              // Tether to grab will change depending on role
+              const sortedDir = dsaOrModified ? sorted[1] : sorted[0];
+              const dir = sortedDir !== undefined
+                ? Directions.outputFromCardinalNum(sortedDir)
+                : 'unknown';
+              const relDir = relConfig === 'true'
+                ? dir
+                : dsaOrModified
+                ? 'clockwiseTwo'
+                : 'clockWiseOne';
+
+              // We could get the player they are taking from, but seems unnecessary at the time
+              return {
+                alertText: output.getDirTether!({
+                  num: num,
+                  dir: output[relDir]!(),
+                }),
+              };
+            }
+            // DPS #2 (DSA/Modified), Support #2 (SDA)
+            return { infoText: output.keepTether!({ num: num }) };
+          }
+        }
+        return { infoText: output.nothing!({ num: tracker }) };
+      },
+    },
+    {
+      id: 'DMU P3 Look upon Me and Despair 1',
+      // BAEC Look upon Me and Despair: Kefka falls on his right side across center of arena
+      // Boss can be in different cardinal/intercardinals
+      type: 'StartsUsing',
+      netRegex: { id: 'BAEC', source: 'Kefka', capture: false },
+      alertText: (_data, _matches, output) => output.outOfMiddle!(),
+      outputStrings: {
+        outOfMiddle: {
+          en: 'Out Of Middle',
+          de: 'Raus aus der Mitte',
+          fr: 'Sortez du milieu',
+          ja: '横へ',
+          cn: '远离中间',
+          ko: '가운데 피하기',
+          tc: '遠離中間',
+        },
+      },
+    },
+    {
+      id: 'DMU P3  Black Hole 4, Nothingness 6',
+      // Three Black Holes spawn, each cause three Nothingness
+      // Needs a boolean to prevent extra firing when delay is added
+      type: 'SpawnNpcExtra',
+      netRegex: { tetherId: headMarkerData['blackHoleTether'], capture: false },
+      condition: (data) => data.nothingnessTracker === 6,
+      delaySeconds: 0.1, // Delay for AddedCombatant
+      response: (data, _matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = blackHoleOutputStrings;
+
+        if (data.blackHoleTetherDirNums.length !== 3 || data.blackHoleTetherDisable)
+          return;
+        data.blackHoleTetherDisable = true;
+
+        const config = data.triggerSetConfig.blackHole;
+        const relConfig = data.triggerSetConfig.blackHoleTether;
+        const num = output.num!({ num: data.nothingnessTracker });
+        const hadAccretion = data.hadAccretion;
+        const line = data.inLine[data.me];
+        const kefkaDir = data.kefkaTeleportDirNum;
+        const dirNums = data.blackHoleTetherDirNums;
+
+        // Convert Kefka dir to 4Dir
+        const startDir = kefkaDir !== undefined
+          ? Math.round(kefkaDir / 2) % 4
+          : -1;
+        const sorted = startDir !== -1 ? getCWOrderFromN(startDir, dirNums) : [];
+        const dir1 = sorted[0] !== undefined
+          ? Directions.outputFromCardinalNum(sorted[0])
+          : 'unknown';
+        const dir2 = sorted[1] !== undefined
+          ? Directions.outputFromCardinalNum(sorted[1])
+          : 'unknown';
+        const dir3 = sorted[2] !== undefined
+          ? Directions.outputFromCardinalNum(sorted[2])
+          : 'unknown';
+
+        if (config !== 'none') {
+          if (line === 2) {
+            if (hadAccretion) {
+              const relDir = relConfig === 'true'
+                ? dir3
+                : 'clockwiseThree';
+              return {
+                alertText: output.getDirTether!({
+                  num: num,
+                  dir: output[relDir]!(),
+                }),
+              };
+            }
+            if (data.role === 'dps') {
+              const relDir = relConfig === 'true'
+                ? dir1
+                : 'clockwiseOne';
+              return {
+                alertText: output.getDirTether!({
+                  num: num,
+                  dir: output[relDir]!(),
+                }),
+              };
+            }
+            const relDir = relConfig === 'true'
+              ? dir2
+              : 'clockwiseTwo';
+            // Support #2
+            return {
+              alertText: output.getDirTether!({
+                num: num,
+                dir: output[relDir]!(),
+              }),
+            };
+          }
+
+          if (line === 3) {
+            // Additional info for the next person grabbing
+            const dsaOrModified = config === 'dsa' || config === 'modified';
+            const roleSwap = dsaOrModified ? data.role === 'dps' : data.role !== 'dps';
+            if (roleSwap) {
+              // Tether to grab will change depending on role
+              const sortedDir = dsaOrModified ? sorted[0] : sorted[1];
+              const dir = sortedDir !== undefined
+                ? Directions.outputFromCardinalNum(sortedDir)
+                : 'unknown';
+              const relDir = relConfig === 'true'
+                ? dir
+                : dsaOrModified
+                ? 'clockwiseOne'
+                : 'clockwiseTwo';
+
+              // We could get the player they are taking from, but seems unnecessary at the time
+              return {
+                infoText: output.middleThenGetDirTether!({
+                  num: num,
+                  dir: output[relDir]!(),
+                }),
+              };
+            }
+          }
+        }
+
+        return {
+          infoText: output.threeBlackHoles!({
+            num: num,
+            dir1: output[dir1]!(),
+            dir2: output[dir2]!(),
+            dir3: output[dir3]!(),
+          }),
+        };
+      },
+    },
+    {
+      id: 'DMU P3 Black Hole 4, Nothingness 7',
+      // One player needs to swap tether
+      type: 'Ability',
+      netRegex: { id: 'BAFC', source: 'Black Hole', capture: false },
+      condition: (data) => data.nothingnessTracker === 7,
+      suppressSeconds: 99999,
+      response: (data, _matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = blackHoleOutputStrings;
+
+        const config = data.triggerSetConfig.blackHole;
+        const relConfig = data.triggerSetConfig.blackHoleTether;
+        const tracker = data.nothingnessTracker;
+        const num = output.num!({ num: tracker });
+        const line = data.inLine[data.me];
+
+        if (config !== 'none') {
+          const dsaOrModified = config === 'dsa' || config === 'modified';
+          const roleKeep = dsaOrModified ? data.role !== 'dps' : data.role === 'dps';
+          const roleSwap = dsaOrModified ? data.role === 'dps' : data.role !== 'dps';
+          if (line === 2) {
+            if (data.hadAccretion || roleKeep)
+              return { infoText: output.keepTether!({ num: num }) };
+            // DPS #2 (DSA/Modified), Support #2 (SDA)
+            return { alertText: output.passTether!({ num: num }) };
+          }
+          if (line === 3) {
+            const kefkaDir = data.kefkaTeleportDirNum;
+            const dirNums = data.blackHoleTetherDirNums;
+
+            // Convert Kefka dir to 4Dir
+            const startDir = kefkaDir !== undefined
+              ? Math.round(kefkaDir / 2) % 4
+              : -1;
+            const sorted = startDir !== -1 ? getCWOrderFromN(startDir, dirNums) : [];
+            if (roleSwap) {
+              // Tether to grab will change depending on role
+              const sortedDir = dsaOrModified ? sorted[0] : sorted[1];
+              const dir = sortedDir !== undefined
+                ? Directions.outputFromCardinalNum(sortedDir)
+                : 'unknown';
+              const relDir = relConfig === 'true'
+                ? dir
+                : dsaOrModified
+                ? 'clockwiseOne'
+                : 'clockwiseTwo';
+
+              // We could get the player they are taking from, but seems unnecessary at the time
+              return {
+                alertText: output.getDirTether!({
+                  num: num,
+                  dir: output[relDir]!(),
+                }),
+              };
+            }
+            // Additional info for the next person grabbing
+            // Tether to grab will change depending on role
+            const sortedDir2 = dsaOrModified ? sorted[1] : sorted[0];
+            const dir2 = sortedDir2 !== undefined
+              ? Directions.outputFromCardinalNum(sortedDir2)
+              : 'unknown';
+            const relDir = relConfig === 'true'
+              ? dir2
+              : dsaOrModified
+              ? 'clockwiseTwo'
+              : 'clockwiseOne';
+
+            // We could get the player they are taking from, but seems unnecessary at the time
+            return {
+              infoText: output.middleThenGetDirTether!({
+                num: num,
+                dir: output[relDir]!(),
+              }),
+            };
+          }
+        }
+
+        return { infoText: output.nothing!({ num: tracker }) };
+      },
+    },
+    {
+      id: 'DMU P3 Black Hole 4, Nothingness 8',
+      // One player needs to swap tether
+      type: 'Ability',
+      netRegex: { id: 'BAFC', source: 'Black Hole', capture: false },
+      condition: (data) => data.nothingnessTracker === 8,
+      suppressSeconds: 99999,
+      response: (data, _matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = blackHoleOutputStrings;
+
+        const config = data.triggerSetConfig.blackHole;
+        const relConfig = data.triggerSetConfig.blackHoleTether;
+        const tracker = data.nothingnessTracker;
+        const num = output.num!({ num: tracker });
+        const line = data.inLine[data.me];
+
+        if (config !== 'none') {
+          const dsaOrModified = config === 'dsa' || config === 'modified';
+          const roleSwap = dsaOrModified ? data.role !== 'dps' : data.role === 'dps';
+          const roleKeep = dsaOrModified ? data.role === 'dps' : data.role !== 'dps';
+          if (line === 2) {
+            if (data.hadAccretion)
+              return { infoText: output.keepTether!({ num: num }) };
+            if (roleSwap)
+              return { alertText: output.passTether!({ num: num }) };
+          }
+          if (line === 3) {
+            if (roleKeep)
+              return { infoText: output.keepTether!({ num: num }) };
+            // Support #3 (DSA/Modified), DPS #3 (SDA)
+            const kefkaDir = data.kefkaTeleportDirNum;
+            const dirNums = data.blackHoleTetherDirNums;
+
+            // Convert Kefka dir to 4Dir
+            const startDir = kefkaDir !== undefined
+              ? Math.round(kefkaDir / 2) % 4
+              : -1;
+            const sorted = startDir !== -1 ? getCWOrderFromN(startDir, dirNums) : [];
+            // Tether to grab will change depending on role
+            const sortedDir = dsaOrModified ? sorted[1] : sorted[0];
+            const dir = sortedDir !== undefined
+              ? Directions.outputFromCardinalNum(sortedDir)
+              : 'unknown';
+            const relDir = relConfig === 'true'
+              ? dir
+              : dsaOrModified
+              ? 'clockwiseTwo'
+              : 'clockwiseOne';
+
+            // We could get the player they are taking from, but seems unnecessary at the time
+            return {
+              alertText: output.getDirTether!({
+                num: num,
+                dir: output[relDir]!(),
+              }),
+            };
+          }
+        }
+        return { infoText: output.nothing!({ num: tracker }) };
+      },
+    },
+    {
+      id: 'DMU P3 Black Hole 5, Nothingness 9',
+      // Two Black Holes spawn, each cause a single Nothingness
+      // Needs a boolean to prevent extra firing when delay is added
+      type: 'SpawnNpcExtra',
+      netRegex: { tetherId: headMarkerData['blackHoleTether'], capture: false },
+      condition: (data) => data.nothingnessTracker === 9,
+      delaySeconds: 0.1, // Delay for AddedCombatant
+      response: (data, _matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = blackHoleOutputStrings;
+
+        if (data.blackHoleTetherDirNums.length !== 2 || data.blackHoleTetherDisable)
+          return;
+        data.blackHoleTetherDisable = true;
+
+        const config = data.triggerSetConfig.blackHole;
+        const relConfig = data.triggerSetConfig.blackHoleTether;
+        const num = output.num!({ num: data.nothingnessTracker });
+        const kefkaDir = data.kefkaTeleportDirNum;
+        const dirNums = data.blackHoleTetherDirNums;
+
+        // Convert Kefka dir to 4Dir
+        const startDir = kefkaDir !== undefined
+          ? Math.round(kefkaDir / 2) % 4
+          : -1;
+        const sorted = startDir !== -1 ? getCWOrderFromN(startDir, dirNums) : [];
+        const dir1 = sorted[0] !== undefined
+          ? Directions.outputFromCardinalNum(sorted[0])
+          : 'unknown';
+        const dir2 = sorted[1] !== undefined
+          ? Directions.outputFromCardinalNum(sorted[1])
+          : 'unknown';
+
+        if ((config === 'dsa' || config === 'sda') && data.inLine[data.me] === 3) {
+          const role = config === 'dsa' ? data.role === 'dps' : data.role !== 'dps';
+          const dir = data.role === 'dps' ? dir1 : dir2;
+          const relDir = relConfig === 'true'
+            ? dir
+            : data.role === 'dps'
+            ? 'clockwiseOne'
+            : 'clockwiseTwo';
+          if (role) {
+            return {
+              alertText: output.getDirTether!({
+                num: num,
+                dir: output[relDir]!(),
+              }),
+            };
+          }
+          // Support #3 (DSA), DPS #3 (SDA)
+          return {
+            alertText: output.getDirTether!({
+              num: num,
+              dir: output[relDir]!(),
+            }),
+          };
+        } else if (
+          config === 'modified' && data.role !== 'dps' &&
+          data.inLine[data.me] === 3
+        )
+          return {
+            alertText: relConfig === 'true'
+              ? output.getDirTethers!({
+                num: num,
+                dir1: output[dir1]!(),
+                dir2: output[dir2]!(),
+              })
+              : output.getBothTethers!({
+                num: num,
+              }),
+          };
+
+        return {
+          infoText: output.twoBlackHoles!({
+            num: num,
+            dir1: output[dir1]!(),
+            dir2: output[dir2]!(),
+          }),
+        };
+      },
+    },
+    {
+      id: 'DMU P3 White Hole + Boss Teleport Location',
+      // Any players not healed to full will suffer 3s BBF Petrification
+      // BD66 White Hole is a 4.7s castTime
+      // We would use BAFC Nothnginess + 1.6s (time of Primordial Crust's BAFA Earthquake)
+      // Which would be roughly 9.6s before the cast, however this conflicts
+      // with Kefka's teleport, so the two calls have been merged
+      type: 'ActorControlExtra',
+      netRegex: { category: '0197', param1: '1E44', capture: true },
+      condition: (data, matches) => matches.id === data.kefkaId && data.nothingnessTracker === 9,
+      delaySeconds: 0.1, // Delayed for actor collect
+      durationSeconds: 9.1, // Time until end of BD66 White Hole cast
+      suppressSeconds: 99999,
+      alertText: (data, _matches, output) => {
+        // Get Boss, he has Unknown_9E8 buff and same one that casts Max
+        const bossId = data.kefkaId ?? 0;
+
+        const actor = data.actorPositions[bossId];
+        if (actor === undefined)
+          return;
+        const dirNum = (Directions.hdgTo8DirNum(actor.heading) + 4) % 8;
+        const dir = Directions.outputFrom8DirNum(dirNum);
+
+        return output.text!({
+          heal: output.fullHeal!(),
+          dir: output.dirKefka!({ dir: output[dir]!() }),
+        });
+      },
+      outputStrings: {
+        ...Directions.outputStrings8Dir,
+        fullHeal: {
+          en: 'Heal to full',
+          de: 'Voll heilen',
+          fr: 'Soin complet',
+          ja: 'HPを満タンに',
+          cn: '奶满全队',
+          ko: '체력 풀피로',
+          tc: '補滿全隊',
+        },
+        dirKefka: {
+          en: '${dir} Kefka',
+          cn: '${dir} 凯夫卡',
+          ko: '${dir} 케프카',
+        },
+        text: {
+          en: '${heal} + ${dir}',
+          cn: '${heal} + ${dir}',
+          ko: '${heal} + ${dir}',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Black Hole 6, Nothingness 10',
+      // One Black Hole spawns, causes a single Nothingness
+      // Black Hole actors are reused from previous Nothingness tethers
+      type: 'Tether',
+      netRegex: { id: headMarkerData['blackHoleTether'], capture: true },
+      condition: (data) => data.nothingnessTracker === 10,
+      delaySeconds: 0.1, // Delay for AddedCombatant
+      suppressSeconds: 99999,
+      response: (data, matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = blackHoleOutputStrings;
+
+        const config = data.triggerSetConfig.blackHole;
+        const relConfig = data.triggerSetConfig.blackHoleTether;
+        const num = output.num!({ num: data.nothingnessTracker });
+        const dirNum = data.blackHoleIdDirNums[matches.sourceId];
+        const dir = dirNum === undefined
+          ? 'unknown'
+          : Directions.outputFromCardinalNum(dirNum);
+
+        if (config !== 'none') {
+          const role = config === 'sda' || config === 'modified'
+            ? data.role === 'dps'
+            : data.role !== 'dps';
+          const relDir = relConfig === 'true' ? dir : 'clockwiseOne';
+          if (data.inLine[data.me] === 3 && role)
+            return {
+              alertText: output.getDirTether!({
+                num: num,
+                dir: output[relDir]!(),
+              }),
+            };
+        }
+        return {
+          infoText: output.oneBlackHole!({
+            num: num,
+            dir: output[dir]!(),
+          }),
+        };
+      },
+    },
+    {
+      id: 'DMU P3 Look upon Me and Despair 2',
+      // BAED Look upon Me and Despair: Kefka falls on his left side across center of arena
+      // He will get up afterwards and float in the center of arena, facing the same direction
+      // Boss can be in different cardinal/intercardinals
+      // This is split from BAEC as players may want to split groups for upcoming Stomp-a-Mole
+      type: 'StartsUsing',
+      netRegex: { id: 'BAED', source: 'Kefka', capture: false },
+      alertText: (_data, _matches, output) => output.outOfMiddle!(),
+      outputStrings: {
+        outOfMiddle: {
+          en: 'Out Of Middle',
+          de: 'Raus aus der Mitte',
+          fr: 'Sortez du milieu',
+          ja: '横へ',
+          cn: '远离中间',
+          ko: '가운데 피하기',
+          tc: '遠離中間',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Blizzard III Puddles',
+      // Earlier call for BB0F Blizzard III to get into position with Kefka Dir
+      // Using last BAFC Nothingness
+      // as it is slightly after the BAEE Look upon Me and Despair ability
+      type: 'Ability',
+      netRegex: { id: 'BAFC', source: 'Black Hole', capture: false },
+      condition: (data) => data.nothingnessTracker === 11,
+      durationSeconds: 8.6, // Time until BB0F cast
+      suppressSeconds: 99999,
+      infoText: (data, _matches, output) => {
+        // Get Boss, he has Unknown_9E8 buff and same one that casts Max
+        const bossId = data.kefkaId ?? 0;
+
+        const actor = data.actorPositions[bossId];
+        if (actor === undefined)
+          return;
+        const dirNum = (Directions.hdgTo8DirNum(actor.heading) + 4) % 8;
+        const dir = Directions.outputFrom8DirNum(dirNum);
+
+        return output.text!({ dir: output[dir]!() });
+      },
+      outputStrings: {
+        ...Directions.outputStrings8Dir,
+        text: {
+          en: '${dir} Kefka: Bait Puddles x2',
+          cn: '${dir} 凯夫卡: 诱导放圈 x2',
+          ko: '${dir} 케프카: 장판 유도 x2',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Knock Down Collect',
+      // Need to collect this and output later due to puddles
+      // Will also need this to determine the role that is stacking last
+      type: 'HeadMarker',
+      netRegex: { id: headMarkerData['stompStack'], capture: true },
+      run: (data, matches) => data.knockDownTarget = matches.target,
+    },
+    {
+      id: 'DMU P3 Knock Down 1 (Early)',
+      type: 'HeadMarker',
+      netRegex: { id: headMarkerData['stompStack'], capture: true },
+      condition: (data) => data.phase === 'p3',
+      durationSeconds: 2.6,
+      suppressSeconds: 99999,
+      infoText: (data, matches, output) => {
+        const isDPSStack = data.party.isDPS(matches.target);
+        const amDPS = data.role === 'dps';
+        if ((isDPSStack && amDPS) || (!isDPSStack && !amDPS))
+          return output.mechThenMech!({
+            mech1: output.puddle!(),
+            mech2: output.stack!(),
+          });
+        return output.mechThenMech!({
+          mech1: output.puddle!(),
+          mech2: output.towers!(),
+        });
+      },
+      outputStrings: {
+        puddle: {
+          en: 'Puddle',
+          cn: '放圈',
+          ko: '장판',
+        },
+        stack: Outputs.stackMarker,
+        towers: {
+          en: 'Towers',
+          de: 'Türme',
+          fr: 'Tours',
+          ja: '塔を踏む',
+          cn: '踩塔',
+          ko: '탑',
+          tc: '踩塔',
+        },
+        mechThenMech: {
+          en: '${mech1} => ${mech2}',
+          cn: '${mech1} => ${mech2}',
+          ko: '${mech1} => ${mech2}',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Knock Down 1 State',
+      // Using BB02 Knock Down (castbar)
+      type: 'Ability',
+      netRegex: { id: 'BB02', source: 'Chaos', capture: false },
+      suppressSeconds: 99999,
+      run: (data) => data.isKnockDown2 = true,
+    },
+    {
+      id: 'DMU P3 Knock Down 1',
+      // Using BB0D Blizzard III as the second puddle occurs after the stack marker
+      // Log can have wrong source
+      type: 'StartsUsing',
+      netRegex: { id: 'BB0D', source: ['Exdeath', 'Kefka'], capture: false },
+      durationSeconds: 2.8,
+      suppressSeconds: 1,
+      alertText: (data, _matches, output) => {
+        const isSecondPuddle = data.isSecondPuddle;
+        const target = data.knockDownTarget;
+        if (!isSecondPuddle) {
+          data.isSecondPuddle = true;
+          return;
+        }
+        if (target === undefined)
+          return;
+
+        const isDPSStack = data.party.isDPS(target);
+        const amDPS = data.role === 'dps';
+
+        if ((isDPSStack && amDPS) || (!isDPSStack && !amDPS))
+          return output.mechThenMech!({
+            mech1: output.stackMiddle!(),
+            mech2: output.towers!(),
+          });
+        return output.mechThenMech!({
+          mech1: output.getTowers!(),
+          mech2: output.stack!(),
+        });
+      },
+      outputStrings: {
+        getTowers: Outputs.getTowers,
+        stackMiddle: {
+          en: 'Stack Middle',
+          de: 'Mittig sammeln',
+          fr: 'Packez-vous au milieu',
+          ja: '中央で頭割り',
+          cn: '中间分摊',
+          ko: '중앙에서 쉐어',
+          tc: '中間分攤',
+        },
+        towers: {
+          en: 'Towers',
+          de: 'Türme',
+          fr: 'Tours',
+          ja: '塔を踏む',
+          cn: '踩塔',
+          ko: '탑',
+          tc: '踩塔',
+        },
+        stack: Outputs.stackMarker,
+        mechThenMech: {
+          en: '${mech1} => ${mech2}',
+          cn: '${mech1} => ${mech2}',
+          ko: '${mech1} => ${mech2}',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Knock Down 2',
+      type: 'HeadMarker',
+      netRegex: { id: headMarkerData['stompStack'], capture: true },
+      condition: (data) => data.isKnockDown2 && data.phase === 'p3',
+      alertText: (data, matches, output) => {
+        const isDPSStack = data.party.isDPS(matches.target);
+        const amDPS = data.role === 'dps';
+
+        if ((isDPSStack && amDPS) || (!isDPSStack && !amDPS))
+          return output.stackMiddle!();
+        return output.getTowers!();
+      },
+      outputStrings: {
+        getTowers: Outputs.getTowers,
+        stackMiddle: {
+          en: 'Stack Middle',
+          de: 'Mittig sammeln',
+          fr: 'Packez-vous au milieu',
+          ja: '中央で頭割り',
+          cn: '中间分摊',
+          ko: '중앙에서 쉐어',
+          tc: '中間分攤',
+        },
+      },
+    },
+    {
+      id: 'DMU P3 Blizzard III State',
+      type: 'StartsUsing',
+      netRegex: { id: 'BB11', source: 'Exdeath', capture: false },
+      run: (data) => data.blizzardStarted = true,
+    },
+    {
+      id: 'DMU P3 Blizzard III Keep Moving (Tower Role)',
+      // In order to avoid 3s D98 Deep Freeze
+      // Players also need to avoid BB05 Big Bang at this time as well
+      // BB05 Big Bang goes off at the stack locations
+      type: 'StartsUsing',
+      netRegex: { id: 'BB11', source: 'Exdeath', capture: true },
+      condition: (data) => {
+        const target = data.knockDownTarget;
+        // Output if we don't have a stack marker target
+        if (target === undefined)
+          return true;
+
+        const isDPSStack = data.party.isDPS(target);
+        const amDPS = data.role === 'dps';
+        // Only output to the role that was getting towers
+        return (isDPSStack && !amDPS) || (!isDPSStack && amDPS);
+      },
+      durationSeconds: (_data, matches) => parseFloat(matches.castTime),
+      infoText: (_data, _matches, output) => output.keepMoving!(),
+      outputStrings: {
+        keepMoving: Outputs.moveAround,
+      },
+    },
+    {
+      id: 'DMU P3 Blizzard III Keep Moving (Stack Role)',
+      // BB03 Knock Down happens after BB11 Blizzard III startsCasting
+      // For players that are stacked, they need a later call
+      type: 'Ability',
+      netRegex: { id: 'BB03', source: 'Chaos', capture: false },
+      condition: (data) => {
+        const target = data.knockDownTarget;
+        // Don't trigger without stack and only trigger on second Knock Down
+        if (target === undefined || !data.blizzardStarted)
+          return false;
+
+        const isDPSStack = data.party.isDPS(target);
+        const amDPS = data.role === 'dps';
+        // Only output to the role that was stacking
+        return (isDPSStack && amDPS) || (!isDPSStack && !amDPS);
+      },
+      durationSeconds: 3.2, // Time when BB11 Blizzard will have ended (~3.121s)
+      suppressSeconds: 1,
+      infoText: (_data, _matches, output) => output.keepMoving!(),
+      outputStrings: {
+        keepMoving: Outputs.moveAround,
+      },
+    },
+    {
+      id: 'DMU P4 Chaos and Neo Exdeath Debuff Collect',
+      // In the count field of Effect 808, the bosses receive these values:
+      // Fake Chaos: 45F
+      // True Chaos: 460
+      // Fake Neo Exdeath: 461
+      // True Neo Exdeath: 462
+      type: 'GainsEffect',
+      netRegex: {
+        effectId: '808',
+        count: ['45F', '460', '461', '462'],
+        capture: true,
+      },
+      run: (data, matches) => {
+        const count = matches.count;
+        const isTrue = count === '460' || (count === '462')
+          ? true
+          : false;
+        // These always come out in order
+        if (data.areFirstDebuffsTrue === undefined)
+          data.areFirstDebuffsTrue = isTrue;
+        else if (data.areSecondDebuffsTrue === undefined)
+          data.areSecondDebuffsTrue = isTrue;
+        else if (data.areThirdDebuffsTrue === undefined)
+          data.areThirdDebuffsTrue = isTrue;
+        else if (data.areFourthDebuffsTrue === undefined)
+          data.areFourthDebuffsTrue = isTrue;
+        // Last two are not needed as the next is a double negative and last
+        // has unique cast ids for true/fake
+      },
+    },
+    {
+      id: 'DMU P4 Second and Fourth Debuffs (Early)',
+      // Using BB20 Inferno / BB21 Tsunami
+      // Source can be innaccurate
+      type: 'StartsUsing',
+      netRegex: { id: ['BB20', 'BB21'], capture: true },
+      delaySeconds: 1, // Delay for boss true/false effect and avoid TTS AoE conflict
+      infoText: (data, matches, output) => {
+        const isTrue = data.areFourthDebuffsTrue !== undefined
+          ? data.areFourthDebuffsTrue
+          : data.areSecondDebuffsTrue;
+        if (isTrue === undefined)
+          return; // Failed to capture true/false
+
+        const isInferno = matches.id === 'BB20';
+        if (isInferno)
+          return isTrue ? output.puddlesFirst!() : output.donutsFirst!();
+        return isTrue ? output.donutsSecond!() : output.puddlesSecond!();
+      },
+      outputStrings: {
+        puddlesFirst: {
+          en: 'Puddles First',
+          cn: '圈1',
+          ko: '첫 번째 장판',
+        },
+        puddlesSecond: {
+          en: 'Puddles Second',
+          cn: '圈2',
+          ko: '두 번째 장판',
+        },
+        donutsFirst: {
+          en: 'Donuts First',
+          cn: '环1',
+          ko: '첫 번째 도넛',
+        },
+        donutsSecond: {
+          en: 'Donuts Second',
+          cn: '环2',
+          ko: '두 번째 도넛',
+        },
+      },
+    },
+    {
+      id: 'DMU P4 Grand Cross Counter',
+      type: 'StartsUsing',
+      netRegex: { id: 'BB14', source: 'Neo Exdeath', capture: false },
+      run: (data) => data.grandCrossCount = data.grandCrossCount + 1,
+    },
+    {
+      id: 'DMU P4 Grand Cross',
+      // 8.7s castTime
+      type: 'StartsUsing',
+      netRegex: { id: 'BB14', source: 'Neo Exdeath', capture: true },
+      delaySeconds: (_data, matches) => parseFloat(matches.castTime) - 5,
+      response: Responses.aoe(),
+    },
+    {
+      id: 'DMU P4 Debuff Collect',
+      // Neo Exdeath Debuffs Cast 1: (12:28.672)
+      // 15A7 Cursed Shriek x2 60s                        =>          13:28.672
+      // 15A8 Forked Lightning x2 76s or 51s              => 13:19.578          13:44.672
+      // 15A9 Compressed Water x2 76s or 51s              => 13:19.578          13:44.672
+      // 15AA Acceleration Bomb (2 Long 76s, 2 Short 51s) => 13:19.672          13:44.672
+      // Chaos Debuffs 1: (12:34.341)
+      // 15AC Dynamic Fluid x8 84s or 15AB Entropy x8 60s => 13:58.341          13:35.485
+      // Neo Exdeath Debuffs Cast 2: (12:43.578)
+      // 15A8 Forked Lightning x2 36s or 61s              => 13:19.578          13.44.578
+      // 15A7 Cursed Shriek x2 69s                        => 13:52.578
+      // 15A9 Compressed Water x2 36s or 61s              => 13:19.578          13.44.578
+      // 15AA Acceleration Bomb (2 Long 61s, 2 Short 36s) => 13:19.578          13:44.578
+      // Chaos Debuffs 2: 12:50.485
+      // 15AB Entropy x8 45s or 15AC Dynamic Fluid 8x 69s => 13:35.485          13:58.341
+      // Neo Exdeath Debuffs Cast 3: (13:00.002)
+      // 15A5 White Wound or 1317 (Fake)
+      // 15A6 Black Wound or 1318 (Fake)
+      // 1558 Beyond Death (Fake) or 566 x4 15s           => 13:15.002
+      // 1C6 Allagan Field x4 15s                         => 13:15.002
+      // Neo Exdeath Final: (13:11.383)
+      // 1317 White Wound (Fake) or 15A5 White Wound
+      // 1318 Black Wound (Fake) or 15A6 Black Wound
+      //
+      // For Neo Exdeath, after the second Grand Cross cast there will be:
+      // 1 Support, 1 DPS with Short 3-Person Stack (Compressed Water and/or Fake Forked Lightning)
+      // 1 Support, 1 DPS with Long 3-Person Stack (Compressed Water and/or Fake Forked Lightning)
+      // 1 Support, 1 DPS with Short Gaze (Cursed Shriek or Fake Cursed Shriek)
+      // 1 Support, 1 DPS with Long Gaze (Cursed Shriek or Fake Cursed Shriek)
+      // 2 Support, 2 DPS with Short Stillness (Acceleration Bomb or Fake Acceleration Bomb)
+      // 2 Support, 2 DPS with Long Stillness (Acceleration Bomb or Fake Acceleration Bomb)
+      // 1st and 2nd set debuffs can swap Forked + Compressed Timings
+      // For 3rd set of debuffs we do not need to know real/fake:
+      // Allagan Field players swap their color by getting hit with opposite color Angilight
+      // Beyond Death field players keep their color by getting hit with same colore Antilight
+      // Entropy and Dynamic Fluids debuffs can be 2nd or 4rth, but resolution is at same time
+      type: 'GainsEffect',
+      netRegex: {
+        effectId: [
+          '15A5',
+          '15A6',
+          '15A7',
+          '15A8',
+          '15A9',
+          '15AA',
+          '1317',
+          '1318',
+          '1558',
+          '566',
+          '1C6',
+        ],
+        capture: true,
+      },
+      run: (data, matches) => {
+        const target = matches.target;
+        const id = matches.effectId;
+        const duration = parseFloat(matches.duration);
+
+        // Cursed Shriek
+        if (id === '15A7') {
+          if (duration < 61)
+            data.shortShriekPlayers.push(target);
+          else
+            data.longShriekPlayers.push(target);
+        } else if (id === '15A8') {
+          // Forked Lightning
+          if (duration < 52) { // Capture both 51s and 36s
+            if (data.isFirstDebuffShort === undefined)
+              data.isFirstDebuffShort = true;
+            data.shortForkedPlayers.push(target);
+          } else {
+            if (data.isFirstDebuffShort === undefined)
+              data.isFirstDebuffShort = false;
+            data.longForkedPlayers.push(target);
+          }
+        } else if (id === '15A9') {
+          // Compressed Water
+          if (duration < 52) { // Capture both 51s and 36s
+            data.shortCompressedPlayers.push(target);
+          } else
+            data.longCompressedPlayers.push(target);
+        } else if (id === '15AA') {
+          // Acceleration Bomb
+          if (duration < 37)
+            data.secondShortBombPlayers.push(target);
+          else if (duration < 52)
+            data.firstShortBombPlayers.push(target);
+          else if (duration < 62)
+            data.secondLongBombPlayers.push(target);
+          else
+            data.firstLongBombPlayers.push(target);
+        } else if (data.me === target) {
+          // Cast 5 / 6 Debuffs
+          if (id === '1558' || id === '566')
+            data.deathOrField = 'death';
+          else if (id === '1C6')
+            data.deathOrField = 'field';
+          else if (id === '1317' || id === '15A5')
+            data.wound = 'white';
+          else if (id === '1318' || id === '15A6')
+            data.wound = 'black';
+        }
+      },
+    },
+    {
+      id: 'DMU P4 Tsunami/Inferno and First Debuffs (Early)',
+      // Tsunami/Inferno are 8.7s castTime, but a delay of 5s leads to TTS overlap
+      // The two are merged resulting in a delay of ~4.7s
+      // Cast 1:
+      // 15A7 Cursed Shriek x2 60s
+      // 15A8 Forked Lightning x2 76s or 51s
+      // 15A9 Compressed Water x2 76s or 51s
+      // 15AA Acceleration Bomb (2 Long 76s, 2 Short 51s)
+      type: 'GainsEffect',
+      netRegex: { effectId: ['15A7', '15A8', '15A9', '15AA'], capture: true },
+      condition: Conditions.targetIsYou(),
+      delaySeconds: 0.1,
+      suppressSeconds: 99999,
+      infoText: (data, _matches, output) => {
+        const isTrue = data.areFirstDebuffsTrue;
+        const isShort = data.isFirstDebuffShort;
+        if (isTrue === undefined || isShort === undefined)
+          return output.aoe!();
+
+        const hasShreik = data.shortShriekPlayers.includes(data.me);
+        const hasFork = isShort
+          ? data.shortForkedPlayers.includes(data.me)
+          : data.longForkedPlayers.includes(data.me);
+        const hasCompressed = isShort
+          ? data.shortCompressedPlayers.includes(data.me)
+          : data.longCompressedPlayers.includes(data.me);
+        const hasFirstBomb = data.firstShortBombPlayers.includes(data.me);
+        const hasSecondBomb = data.firstLongBombPlayers.includes(data.me);
+
+        // Shriek players always are short bomb
+        // This will be two players
+        if (hasShreik)
+          return output.aoeDebuff!({
+            aoe: output.aoe!(),
+            debuff: output.firstGazeAndBomb!({
+              gaze: isTrue ? output.gaze!() : output.fakeGaze!(),
+              bomb: isTrue ? output.bomb!() : output.fakeBomb!(),
+            }),
+          });
+
+        // Remaing 6 players will get one debuff
+        if ((hasFork && isTrue) || (hasCompressed && !isTrue))
+          return output.aoeDebuff!({
+            aoe: output.aoe!(),
+            debuff: isShort
+              ? output.spreadFirst!({ mech: output.spread!() })
+              : output.spreadSecond!({ mech: output.spread!() }),
+          });
+        if ((hasFork && !isTrue) || (hasCompressed && isTrue))
+          return output.aoeDebuff!({
+            aoe: output.aoe!(),
+            debuff: isShort
+              ? output.stackFirst!({ mech: output.stack!() })
+              : output.stackSecond!({ mech: output.stack!() }),
+          });
+        if (hasFirstBomb)
+          return output.aoeDebuff!({
+            aoe: output.aoe!(),
+            debuff: output.bombFirst!({
+              mech: isTrue ? output.bomb!() : output.fakeBomb!(),
+            }),
+          });
+        if (hasSecondBomb)
+          return output.aoeDebuff!({
+            aoe: output.aoe!(),
+            debuff: output.bombSecond!({
+              mech: isTrue ? output.bomb!() : output.fakeBomb!(),
+            }),
+          });
+
+        // No debuff, they will be a stack player
+        return output.aoeDebuff!({
+          aoe: output.aoe!(),
+          debuff: isShort
+            ? output.stackFirstNoDebuff!({ mech: output.stack!() })
+            : output.stackSecondNoDebuff!({ mech: output.stack!() }),
+        });
+      },
+      outputStrings: {
+        aoe: Outputs.aoe,
+        aoeDebuff: {
+          en: '${aoe} + ${debuff}',
+          cn: '${aoe} + ${debuff}',
+          ko: '${aoe} + ${debuff}',
+        },
+        firstGazeAndBomb: {
+          en: '${gaze} + ${bomb} on YOU First',
+          cn: '${gaze} + ${bomb} 点名1',
+          ko: '첫 번째 ${gaze} + ${bomb} 대상자',
+        },
+        gaze: {
+          en: 'Look Away',
+          cn: '背对',
+          ko: '시선 피하기',
+        },
+        fakeGaze: {
+          en: 'Look At',
+          cn: '面向',
+          ko: '바라보기',
+        },
+        spreadFirst: {
+          en: '${mech} on YOU First',
+          cn: '${mech} 点名1',
+          ko: '첫 번째 ${mech} 대상자',
+        },
+        stackFirst: {
+          en: '${mech} on YOU First',
+          cn: '${mech} 点名1',
+          ko: '첫 번째 ${mech} 대상자',
+        },
+        stackFirstNoDebuff: {
+          en: 'No Debuff, ${mech} First',
+          cn: '无BUFF, ${mech} 1',
+          ko: '디버프 없음, 첫 번째 ${mech}',
+        },
+        bombFirst: {
+          en: '${mech} on YOU First',
+          cn: '${mech} 点名1',
+          ko: '첫 번째 ${mech} 대상자',
+        },
+        stackSecondNoDebuff: {
+          en: 'No Debuff, ${mech} Second',
+          cn: '无BUFF, ${mech} 2',
+          ko: '디버프 없음, 두 번째 ${mech}',
+        },
+        stackSecond: {
+          en: '${mech} on YOU Second',
+          cn: '${mech} 点名2',
+          ko: '두 번째 ${mech} 대상자',
+        },
+        spreadSecond: {
+          en: '${mech} on YOU Second',
+          cn: '${mech} 点名2',
+          ko: '두 번째 ${mech} 대상자',
+        },
+        bombSecond: {
+          en: '${mech} on YOU Second',
+          cn: '${mech} 点名2',
+          ko: '두 번째 ${mech} 대상자',
+        },
+        stack: Outputs.stackMarker,
+        spread: Outputs.spread,
+        bomb: {
+          en: 'Stillness',
+          cn: '停停停',
+          ko: '정지',
+        },
+        fakeBomb: {
+          en: 'Motion',
+          cn: '动动动',
+          ko: '움직이기',
+        },
+      },
+    },
+    {
+      id: 'DMU P4 Entropy/Dynamic Fluid Collect',
+      // 15AB Entropy
+      // 15AC Dynamic Fluid
+      type: 'GainsEffect',
+      netRegex: { effectId: ['15AB', '15AC'], capture: true },
+      suppressSeconds: 1,
+      run: (data, matches) => {
+        const duration = parseFloat(matches.duration);
+        // These could be undefined if the true/false trigger fails to collect
+        // Checking for undefined should be handled in an output trigger
+
+        if (matches.effectId === '15AB') {
+          data.isEntropyTrue = duration > 46
+            ? data.areSecondDebuffsTrue
+            : data.areFourthDebuffsTrue;
+          return;
+        }
+        data.isFluidTrue = duration > 83
+          ? data.areSecondDebuffsTrue
+          : data.areFourthDebuffsTrue;
+      },
+    },
+    {
+      id: 'DMU P4 Tsunami/Inferno and Third Debuffs (Early)',
+      // Cast 2:
+      // 15A8 Forked Lightning x2 36s or 61s
+      // 15A7 Cursed Shriek x2 69s
+      // 15A9 Compressed Water x2 36s or 61s
+      // 15AA Acceleration Bomb (2 Long 61s, 2 Short 36s)
+      type: 'GainsEffect',
+      netRegex: { effectId: ['15A7', '15A8', '15A9', '15AA'], capture: true },
+      condition: (data, matches) => {
+        return data.me === matches.target && data.grandCrossCount === 2;
+      },
+      delaySeconds: 0.1,
+      suppressSeconds: 99999,
+      infoText: (data, _matches, output) => {
+        const isTrue = data.areThirdDebuffsTrue;
+        const isShort = data.isFirstDebuffShort;
+        if (isTrue === undefined || isShort === undefined)
+          return output.aoe!();
+
+        const hasShreik = data.longShriekPlayers.includes(data.me);
+        const hasFork = isShort
+          ? data.longForkedPlayers.includes(data.me)
+          : data.shortForkedPlayers.includes(data.me);
+        const hasCompressed = isShort
+          ? data.longCompressedPlayers.includes(data.me)
+          : data.shortCompressedPlayers.includes(data.me);
+        const hasFirstBomb = data.secondShortBombPlayers.includes(data.me);
+        const hasSecondBomb = data.secondLongBombPlayers.includes(data.me);
+
+        // Shriek players always are short bomb
+        // This will be two players
+        if (hasShreik)
+          return output.aoeDebuff!({
+            aoe: output.aoe!(),
+            debuff: output.secondGazeAndBomb!({
+              gaze: isTrue ? output.gaze!() : output.fakeGaze!(),
+              bomb: isTrue ? output.bomb!() : output.fakeBomb!(),
+            }),
+          });
+
+        // Remaing 6 players will get one debuff
+        if ((hasFork && isTrue) || (hasCompressed && !isTrue))
+          return output.aoeDebuff!({
+            aoe: output.aoe!(),
+            debuff: isShort
+              ? output.spreadSecond!({ mech: output.spread!() })
+              : output.spreadFirst!({ mech: output.spread!() }),
+          });
+        if ((hasFork && !isTrue) || (hasCompressed && isTrue))
+          return output.aoeDebuff!({
+            aoe: output.aoe!(),
+            debuff: isShort
+              ? output.stackSecond!({ mech: output.stack!() })
+              : output.stackFirst!({ mech: output.stack!() }),
+          });
+        if (hasFirstBomb)
+          return output.aoeDebuff!({
+            aoe: output.aoe!(),
+            debuff: output.bombFirst!({
+              mech: isTrue ? output.bomb!() : output.fakeBomb!(),
+            }),
+          });
+        if (hasSecondBomb)
+          return output.aoeDebuff!({
+            aoe: output.aoe!(),
+            debuff: output.bombSecond!({
+              mech: isTrue ? output.bomb!() : output.fakeBomb!(),
+            }),
+          });
+
+        // No debuff, they will be a stack player
+        return output.aoeDebuff!({
+          aoe: output.aoe!(),
+          debuff: isShort
+            ? output.stackSecondNoDebuff!({ mech: output.stack!() })
+            : output.stackFirstNoDebuff!({ mech: output.stack!() }),
+        });
+      },
+      outputStrings: {
+        aoe: Outputs.aoe,
+        aoeDebuff: {
+          en: '${aoe} + ${debuff}',
+          cn: '${aoe} + ${debuff}',
+          ko: '${aoe} + ${debuff}',
+        },
+        secondGazeAndBomb: {
+          en: '${gaze} + ${bomb} on YOU Second',
+          cn: '${gaze} + ${bomb} 点名2',
+          ko: '두 번째 ${gaze} + ${bomb} 대상자',
+        },
+        gaze: {
+          en: 'Look Away',
+          cn: '背对',
+          ko: '시선 피하기',
+        },
+        fakeGaze: {
+          en: 'Look At',
+          cn: '面向',
+          ko: '바라보기',
+        },
+        spreadFirst: {
+          en: '${mech} on YOU First',
+          cn: '${mech} 点名1',
+          ko: '첫 번째 ${mech} 대상자',
+        },
+        stackFirst: {
+          en: '${mech} on YOU First',
+          cn: '${mech} 点名1',
+          ko: '첫 번째 ${mech} 대상자',
+        },
+        bombFirst: {
+          en: '${mech} on YOU First',
+          cn: '${mech} 点名1',
+          ko: '첫 번째 ${mech} 대상자',
+        },
+        stackFirstNoDebuff: {
+          en: 'No Debuff, ${mech} First',
+          cn: '无BUFF, ${mech} 点名1',
+          ko: '디버프 없음, 첫 번째 ${mech}',
+        },
+        stackSecondNoDebuff: {
+          en: 'No Debuff, ${mech} Second',
+          cn: '无BUFF, ${mech} 点名2',
+          ko: '디버프 없음, 두 번째 ${mech}',
+        },
+        spreadSecond: {
+          en: '${mech} on YOU Second',
+          cn: '${mech} 点名2',
+          ko: '두 번째 ${mech} 대상자',
+        },
+        stackSecond: {
+          en: '${mech} on YOU Second',
+          cn: '${mech} 点名2',
+          ko: '두 번째 ${mech}',
+        },
+        bombSecond: {
+          en: '${mech} on YOU Second',
+          cn: '${mech} 点名2',
+          ko: '두 번째 ${mech} 대상자',
+        },
+        stack: Outputs.stackMarker,
+        spread: Outputs.spread,
+        bomb: {
+          en: 'Stillness',
+          cn: '停停停',
+          ko: '정지',
+        },
+        fakeBomb: {
+          en: 'Motion',
+          cn: '动动动',
+          ko: '움직이기',
+        },
+      },
+    },
+    {
+      id: 'DMU P4 Fifth Debuffs',
+      // Neo Exdeath Debuffs Cast 3
+      // 1317 White Wound (Fake) or 15A5 White Wound
+      // 1318 Black Wound (Fake) or 15A6 Black Wound
+      // 1558 Beyond Death (Fake) or 566 Beyond Death
+      // 1C6 Allagan Field
+      type: 'GainsEffect',
+      netRegex: {
+        effectId: ['1317', '15A5', '1318', '15A6', '566', '1558', '1C6'],
+        capture: true,
+      },
+      condition: Conditions.targetIsYou(),
+      delaySeconds: 0.1,
+      suppressSeconds: 99999,
+      infoText: (data, _matches, output) => {
+        const wound = data.wound;
+        const deathOrField = data.deathOrField;
+        if (wound === undefined || deathOrField === undefined)
+          return;
+
+        return output.debuffsOnYou!({
+          wound: output[wound]!(),
+          deathOrField: output[deathOrField]!(),
+        });
+      },
+      outputStrings: {
+        death: {
+          en: 'Death',
+          cn: '超越死亡',
+          ko: '죽음 초월',
+        },
+        field: {
+          en: 'Field',
+          cn: '亚拉戈领域',
+          ko: '알라그 필드',
+        },
+        white: {
+          en: 'Purple Debuff',
+          cn: '紫buff',
+          ko: '보라색 디버프',
+        },
+        black: {
+          en: 'Blue Debuff',
+          cn: '蓝buff',
+          ko: '파란색 디버프',
+        },
+        debuffsOnYou: {
+          en: '${wound} + ${deathOrField} on YOU',
+          cn: '${wound} + ${deathOrField} 点名',
+          ko: '${wound} + ${deathOrField} 대상자',
+        },
+      },
+    },
+    {
+      id: 'DMU P4 Flood of Naught',
+      type: 'StartsUsing',
+      netRegex: { id: ['C392', 'C393', 'C3A1', 'C3A2'], source: 'Neo Exdeath', capture: true },
+      alertText: (data, matches, output) => {
+        const wound = data.wound;
+        const deathOrField = data.deathOrField;
+        if (wound === undefined || deathOrField === undefined)
+          return;
+
+        const id = matches.id;
+        const isFloodTrue = id === 'C392' || id === 'C393';
+        const isBlueLeft = id === 'C3A2' || id === 'C393'; // Our left
+        const keep = (deathOrField === 'death' && isFloodTrue) ||
+          (deathOrField === 'field' && !isFloodTrue);
+
+        const laser = output[deathOrField]!({
+          color: keep
+            ? output[wound]!()
+            : wound === 'white'
+            ? output.black!()
+            : output.white!(),
+          dir: (keep && wound === 'white' && isBlueLeft) ||
+              (keep && wound === 'black' && !isBlueLeft) ||
+              (!keep && wound === 'white' && !isBlueLeft) ||
+              (!keep && wound === 'black' && isBlueLeft)
+            ? output.right!()
+            : output.left!(),
+        });
+
+        const is1stTrue = data.areFirstDebuffsTrue;
+        const is2ndTrue = data.areThirdDebuffsTrue;
+        const isFirstShort = data.isFirstDebuffShort;
+        if (is1stTrue === undefined || is2ndTrue === undefined || isFirstShort === undefined)
+          return laser;
+        const isShortTrue = isFirstShort ? is1stTrue : is2ndTrue;
+
+        const hasFork = data.shortForkedPlayers.includes(data.me);
+        const hasCompressed = data.shortCompressedPlayers.includes(data.me);
+        const hasFirstBomb = data.firstShortBombPlayers.includes(data.me);
+        const hasSecondBomb = data.secondShortBombPlayers.includes(data.me);
+        const isBombTrue = hasFirstBomb ? is1stTrue : is2ndTrue;
+
+        const hasSpread = (hasFork && isShortTrue) || (hasCompressed && !isShortTrue);
+        const hasStack = (hasFork && !isShortTrue) || (hasCompressed && isShortTrue);
+        const hasBomb = hasFirstBomb || hasSecondBomb;
+
+        // Handle 2 Mechs
+        if (hasSpread && hasBomb)
+          return output.laserThenForkBomb!({
+            mech1: laser,
+            mech2: output.spread!(),
+            mech3: isBombTrue ? output.bomb!() : output.fakeBomb!(),
+          });
+        if (hasStack && hasBomb)
+          return output.laserThenCompressedBomb!({
+            mech1: laser,
+            mech2: output.stack!(),
+            mech3: isBombTrue ? output.bomb!() : output.fakeBomb!(),
+          });
+        if (hasSpread)
+          return output.laserThenSpread!({
+            mech1: laser,
+            mech2: output.spread!(),
+          });
+        if (hasStack)
+          return output.laserThenStack!({
+            mech1: laser,
+            mech2: output.stack!(),
+          });
+        if (hasBomb)
+          return output.laserThenBomb!({
+            mech1: laser,
+            mech2: isBombTrue ? output.bomb!() : output.fakeBomb!(),
+            mech3: output.stack!(),
+          });
+        // Has either nothing or long debuffs
+        return output.laserThenNoDebuff!({
+          mech1: laser,
+          mech2: output.noDebuff!(),
+        });
+      },
+      outputStrings: {
+        death: {
+          en: 'Stand in ${color} (${dir})',
+          cn: '站在 ${color} (${dir})',
+          ko: '${color}에 서기 (${dir})',
+        },
+        field: {
+          en: 'Stand in ${color} (${dir})',
+          cn: '站在 ${color} (${dir})',
+          ko: '${color}에 서기 (${dir})',
+        },
+        white: {
+          en: 'Purple',
+          cn: '紫',
+          ko: '보라색',
+        },
+        black: {
+          en: 'Blue',
+          cn: '蓝',
+          ko: '파란색',
+        },
+        left: Outputs.left,
+        right: Outputs.right,
+        laserThenSpread: {
+          en: '${mech1} => ${mech2}',
+          cn: '${mech1} => ${mech2}',
+          ko: '${mech1} => ${mech2}',
+        },
+        laserThenStack: {
+          en: '${mech1} => ${mech2}',
+          cn: '${mech1} => ${mech2}',
+          ko: '${mech1} => ${mech2}',
+        },
+        laserThenBomb: {
+          en: '${mech1} => ${mech2} + ${mech3}',
+          cn: '${mech1} => ${mech2} + ${mech3}',
+          ko: '${mech1} => ${mech2} + ${mech3}',
+        },
+        laserThenForkBomb: {
+          en: '${mech1} => ${mech2} + ${mech3}',
+          cn: '${mech1} => ${mech2} + ${mech3}',
+          ko: '${mech1} => ${mech2} + ${mech3}',
+        },
+        laserThenCompressedBomb: {
+          en: '${mech1} => ${mech2} + ${mech3}',
+          cn: '${mech1} => ${mech2} + ${mech3}',
+          ko: '${mech1} => ${mech2} + ${mech3}',
+        },
+        laserThenNoDebuff: {
+          en: '${mech1} => ${mech2}',
+          cn: '${mech1} => ${mech2}',
+          ko: '${mech1} => ${mech2}',
+        },
+        noDebuff: Outputs.stackMarker,
+        stack: Outputs.stackMarker,
+        spread: Outputs.spread,
+        bomb: {
+          en: 'Stillness',
+          cn: '停停停',
+          ko: '정지',
+        },
+        fakeBomb: {
+          en: 'Motion',
+          cn: '动动动',
+          ko: '움직이기',
+        },
+      },
+    },
+    {
+      id: 'DMU P4 Short Debuffs',
+      // Once hit by C394 White Antilight or C395 Black Antilight, it is safe to move
+      type: 'Ability',
+      netRegex: { id: ['C394', 'C395'], source: 'Neo Exdeath', capture: false },
+      suppressSeconds: 99999,
+      alertText: (data, _matches, output) => {
+        const is1stTrue = data.areFirstDebuffsTrue;
+        const is2ndTrue = data.areThirdDebuffsTrue;
+        const isFirstShort = data.isFirstDebuffShort;
+        if (is1stTrue === undefined || is2ndTrue === undefined || isFirstShort === undefined)
+          return;
+        const isShortTrue = isFirstShort ? is1stTrue : is2ndTrue;
+
+        const hasFork = data.shortForkedPlayers.includes(data.me);
+        const hasCompressed = data.shortCompressedPlayers.includes(data.me);
+        const hasFirstBomb = data.firstShortBombPlayers.includes(data.me);
+        const hasSecondBomb = data.secondShortBombPlayers.includes(data.me);
+        const isBombTrue = hasFirstBomb ? is1stTrue : is2ndTrue;
+
+        const hasSpread = (hasFork && isShortTrue) || (hasCompressed && !isShortTrue);
+        const hasStack = (hasFork && !isShortTrue) || (hasCompressed && isShortTrue);
+        const hasBomb = hasFirstBomb || hasSecondBomb;
+
+        // Handle 2 Mechs
+        if (hasSpread && hasBomb)
+          return output.forkBomb!({
+            mech1: output.spread!(),
+            mech2: isBombTrue ? output.bomb!() : output.fakeBomb!(),
+          });
+        if (hasStack && hasBomb)
+          return output.compressedBomb!({
+            mech1: output.stack!(),
+            mech2: isBombTrue ? output.bomb!() : output.fakeBomb!(),
+          });
+        if (hasSpread)
+          return output.spread!();
+        if (hasStack)
+          return output.stack!();
+        if (hasBomb)
+          return output.bombStack!({
+            mech1: isBombTrue ? output.bomb!() : output.fakeBomb!(),
+            mech2: output.stack!(),
+          });
+        // Has either nothing or long debuffs
+        return output.noDebuff!();
+      },
+      outputStrings: {
+        you: {
+          en: 'YOU',
+          cn: '你，',
+          ko: '나',
+        },
+        bombStack: {
+          en: '${mech1} + ${mech2}',
+          cn: '${mech1} + ${mech2}',
+          ko: '${mech1} + ${mech2}',
+        },
+        forkBomb: {
+          en: '${mech1} + ${mech2}',
+          cn: '${mech1} + ${mech2}',
+          ko: '${mech1} + ${mech2}',
+        },
+        compressedBomb: {
+          en: '${mech1} + ${mech2}',
+          cn: '${mech1} + ${mech2}',
+          ko: '${mech1} + ${mech2}',
+        },
+        noDebuff: Outputs.stackMarker,
+        stack: Outputs.stackMarker,
+        spread: Outputs.spread,
+        bomb: {
+          en: 'Stillness',
+          cn: '停停停',
+          ko: '정지',
+        },
+        fakeBomb: {
+          en: 'Motion',
+          cn: '动动动',
+          ko: '움직이기',
+        },
+      },
+    },
+    {
+      id: 'DMU P4 Acceleration Bomb Reminder',
+      // Shorts are 51 (First), 36 (Second)
+      // Longs are 76 (First), 61 (Second)
+      type: 'GainsEffect',
+      netRegex: { effectId: '15AA', capture: true },
+      condition: Conditions.targetIsYou(),
+      delaySeconds: (_data, matches) => parseFloat(matches.duration) - 3,
+      durationSeconds: 3,
+      alertText: (data, matches, output) => {
+        const duration = parseFloat(matches.duration);
+        const isFirstDebuff = duration > 75 || (duration < 52 && duration > 50);
+        const isTrue = isFirstDebuff
+          ? data.areFirstDebuffsTrue
+          : data.areThirdDebuffsTrue;
+        return isTrue ? output.stopEverything!() : output.keepMoving!();
+      },
+      outputStrings: {
+        keepMoving: {
+          en: 'Keep Moving',
+          de: 'weiter bewegen',
+          fr: 'Continuez à bouger',
+          ja: '最後は動く',
+          cn: '后行动',
+          ko: '계속 움직이기',
+          tc: '後行動',
+        },
+        stopEverything: {
+          en: 'Stop Everything',
+          de: 'Alles stoppen',
+          fr: 'Arrêtez tout',
+          ja: '最後は止まる',
+          cn: '后静止',
+          ko: '완전히 멈추기',
+          tc: '後靜止',
+        },
+      },
+    },
+    {
+      id: 'DMU P4 Cursed Shriek (Early)',
+      // This may be more important for those that have it to get into position
+      // Using the debuff as a timer as player deaths would cause early trigger
+      type: 'GainsEffect',
+      netRegex: { effectId: '15A7', capture: true },
+      delaySeconds: (_data, matches) => {
+        return parseFloat(matches.duration) < 61 ? 51.1 : 61.1;
+      },
+      suppressSeconds: 1,
+      infoText: (data, matches, output) => {
+        const isShortDebuffs = parseFloat(matches.duration) < 61;
+        const isTrue = isShortDebuffs ? data.areFirstDebuffsTrue : data.areThirdDebuffsTrue;
+        if (isTrue === undefined)
+          return;
+
+        const shriekPlayers = isShortDebuffs ? data.shortShriekPlayers : data.longShriekPlayers;
+        const players = shriekPlayers.map(
+          (player) => {
+            if (player === data.me)
+              return output.you!();
+            return data.party.member(player);
+          },
+        );
+        const msg = players?.join(', ');
+
+        // Seperate configurable output if you have it
+        if (shriekPlayers.includes(data.me)) {
+          return isTrue
+            ? output.gazeOnYou!({ players: msg })
+            : output.fakeGazeOnYou!({ players: msg });
+        }
+        return isTrue
+          ? output.gazeOnPlayers!({ players: msg })
+          : output.fakeGazeOnPlayers!({ players: msg });
+      },
+      outputStrings: {
+        you: {
+          en: 'YOU',
+          cn: '你，',
+          ko: '나',
+        },
+        fakeGazeOnPlayers: {
+          en: 'Face ${players} (later)',
+          cn: '面向 ${players} (稍后)',
+          ko: '${players} 바라보기 (나중)',
+        },
+        gazeOnPlayers: {
+          en: 'Look Away from ${players} (later)',
+          cn: '背对 ${players} (稍后)',
+          ko: '${players}에게서 뒤돌기 (나중)',
+        },
+        fakeGazeOnYou: {
+          en: 'Face ${players} (later)',
+          cn: '面向 ${players} (稍后)',
+          ko: '${players} 바라보기 (나중)',
+        },
+        gazeOnYou: {
+          en: 'Look Away from ${players} (later)',
+          cn: '背对 ${players} (稍后)',
+          ko: '${players}에게서 뒤돌기 (나중)',
+        },
+      },
+    },
+    {
+      id: 'DMU P4 Mana Charge Collect',
+      // 5CD Thunder Charged: Store the value of isThunderTrue for later
+      // 5CC Blizzard Charged: Store the value of isIceTrue for later
+      type: 'GainsEffect',
+      netRegex: { effectId: ['5CD', '5CC'], capture: true },
+      delaySeconds: 0.1, // Delay for headmarker collect
+      run: (data, matches) => {
+        if (matches.effectId === '5CD')
+          data.isThunderChargedTrue = data.isThunderTrue;
+        else
+          data.isBlizzardChargedTrue = data.isIceTrue;
+      },
+    },
+    {
+      id: 'DMU P4 Thrumming Thunder III',
+      // BAA4 Mana Charge signifies that the true/fake will be stored for later
+      // Indicated with boss buff 5CA Mana Charged and 5CD Thunder Charged
+      type: 'StartsUsing',
+      netRegex: { id: 'C5DE', source: 'Kefka', capture: false },
+      condition: (data) => data.isThunderTrue !== undefined,
+      infoText: (data, _matches, output) => {
+        return data.isThunderTrue ? output.trueThunder!() : output.fakeThunder!();
+      },
+      outputStrings: mysteryMagicThunderOutputStrings,
+    },
+    {
+      id: 'DMU P4 First Cursed Shriek',
+      type: 'GainsEffect',
+      netRegex: { effectId: '15A7', capture: true },
+      condition: (_data, matches) => parseFloat(matches.duration) < 61,
+      delaySeconds: (_data, matches) => parseFloat(matches.duration) - 3,
+      durationSeconds: 3,
+      suppressSeconds: 99999,
+      alertText: (data, _matches, output) => {
+        const is1stTrue = data.areFirstDebuffsTrue;
+        if (is1stTrue === undefined)
+          return;
+
+        const shriekPlayers = data.shortShriekPlayers;
+        const players = shriekPlayers.map(
+          (player) => {
+            if (player === data.me)
+              return output.you!();
+            return data.party.member(player);
+          },
+        );
+        const msg = players?.join(', ');
+
+        if (shriekPlayers.includes(data.me))
+          return is1stTrue
+            ? output.gazeOnPlayersYou!({ players: msg })
+            : output.fakeGazeOnPlayersYou!({ players: msg });
+        return is1stTrue
+          ? output.gazeOnPlayers!({ players: msg })
+          : output.fakeGazeOnPlayers!({ players: msg });
+      },
+      outputStrings: {
+        you: {
+          en: 'YOU',
+          cn: '你，',
+          ko: '나',
+        },
+        fakeGazeOnPlayers: {
+          en: 'Face ${players}',
+          cn: '面向 ${players}',
+          ko: '${players} 바라보기',
+        },
+        gazeOnPlayers: {
+          en: 'Look Away from ${players}',
+          cn: '背对 ${players}',
+          ko: '${players}에게서 뒤돌기',
+        },
+        fakeGazeOnPlayersYou: {
+          en: 'Face ${players}',
+          cn: '面向 ${players}',
+          ko: '${players} 바라보기',
+        },
+        gazeOnPlayersYou: {
+          en: 'Look Away from ${players}',
+          cn: '背对 ${players}',
+          ko: '${players}에게서 뒤돌기',
+        },
+      },
+    },
+    {
+      id: 'DMU P4 Entropy',
+      // Using the following as possible matches:
+      // 15A7 Cursed Shriek x2 60s
+      type: 'GainsEffect',
+      netRegex: { effectId: '15A7', capture: true },
+      condition: (_data, matches) => parseFloat(matches.duration) < 61,
+      delaySeconds: (_data, matches) => parseFloat(matches.duration),
+      durationSeconds: 6.9, // Time until Stray Flames
+      suppressSeconds: 99999,
+      alertText: (data, _matches, output) => {
+        const isEntropyTrue = data.isEntropyTrue;
+        if (isEntropyTrue === undefined)
+          return;
+
+        return isEntropyTrue ? output.puddles!() : output.donuts!();
+      },
+      outputStrings: {
+        donuts: {
+          en: 'Stack for Donuts',
+          de: 'Für Donuts sammeln',
+          fr: 'Packez-vous pour les donuts',
+          cn: '集合放月环',
+          ko: '모여서 도넛장판 피하기',
+          tc: '集合放月環',
+        },
+        puddles: Outputs.baitPuddles,
+      },
+    },
+    {
+      id: 'DMU P4/P5 Ultima Upsurge',
+      type: 'StartsUsing',
+      netRegex: { id: 'C24A', source: 'Kefka', capture: false },
+      response: Responses.bigAoe(),
+    },
+    {
+      id: 'DMU P4 Stray Flames and Long Debuffs',
+      // BB22 Stray Flames: Puddles have been baited, these will be going off next
+      // BB23 Fake Stray Flames: Wait until Donuts happen
+      // These have a 4.7s castTime, using GainsEffect from 15AB Entropy to prevent early triggers
+      // 15A8 Forked Lightning x2 76s
+      // 15A9 Compressed Water x2 76s
+      // 15AA Acceleration Bomb (2 Long 76s)
+      type: 'GainsEffect',
+      netRegex: { effectId: '15AB', capture: true },
+      delaySeconds: (data, matches) => {
+        const duration = parseFloat(matches.duration);
+        return (data.isEntropyTrue || data.isEntropyTrue === undefined)
+          ? duration
+          : duration + 4.7;
+      },
+      durationSeconds: (data) => {
+        // Time until 15A8, 15A9, 15AA debuffs expire
+        return (data.isEntropyTrue || data.isEntropyTrue === undefined) ? 9.1 : 4.4;
+      },
+      suppressSeconds: 99999,
+      response: (data, _matches, output) => {
+        // cactbot-builtin-response
+        output.responseOutputStrings = {
+          you: {
+            en: 'YOU',
+            cn: '你，',
+            ko: '나',
+          },
+          bombStack: {
+            en: '${mech1} + ${mech2}',
+            cn: '${mech1} + ${mech2}',
+            ko: '${mech1} + ${mech2}',
+          },
+          forkBomb: {
+            en: '${mech1} + ${mech2}',
+            cn: '${mech1} + ${mech2}',
+            ko: '${mech1} + ${mech2}',
+          },
+          compressedBomb: {
+            en: '${mech1} + ${mech2}',
+            cn: '${mech1} + ${mech2}',
+            ko: '${mech1} + ${mech2}',
+          },
+          noDebuff: Outputs.stackMarker,
+          stack: Outputs.stackMarker,
+          spread: Outputs.spread,
+          bomb: {
+            en: 'Stillness',
+            cn: '停停停',
+            ko: '정지',
+          },
+          fakeBomb: {
+            en: 'Motion',
+            cn: '动动动',
+            ko: '움직이기',
+          },
+        };
+
+        const is1stTrue = data.areFirstDebuffsTrue;
+        const is2ndTrue = data.areThirdDebuffsTrue;
+        const isFirstShort = data.isFirstDebuffShort;
+        if (is1stTrue === undefined || is2ndTrue === undefined || isFirstShort === undefined)
+          return;
+        const isLongTrue = isFirstShort ? is2ndTrue : is1stTrue;
+
+        // Drop severity if fail to get true/false for Entropy as we default to end of debuffs
+        const severity = data.isEntropyTrue === undefined ? 'infoText' : 'alertText';
+
+        const hasFork = data.longForkedPlayers.includes(data.me);
+        const hasCompressed = data.longCompressedPlayers.includes(data.me);
+        const hasFirstBomb = data.firstLongBombPlayers.includes(data.me);
+        const hasSecondBomb = data.secondLongBombPlayers.includes(data.me);
+        const isBombTrue = hasFirstBomb ? is1stTrue : is2ndTrue;
+
+        const hasSpread = (hasFork && isLongTrue) || (hasCompressed && !isLongTrue);
+        const hasStack = (hasFork && !isLongTrue) || (hasCompressed && isLongTrue);
+        const hasBomb = hasFirstBomb || hasSecondBomb;
+
+        // Handle 2 Mechs
+        if (hasSpread && hasBomb)
+          return {
+            [severity]: output.forkBomb!({
+              mech1: output.spread!(),
+              mech2: isBombTrue ? output.bomb!() : output.fakeBomb!(),
+            }),
+          };
+        if (hasStack && hasBomb)
+          return {
+            [severity]: output.compressedBomb!({
+              mech1: output.stack!(),
+              mech2: isBombTrue ? output.bomb!() : output.fakeBomb!(),
+            }),
+          };
+        if (hasSpread)
+          return { [severity]: output.spread!() };
+        if (hasStack)
+          return { [severity]: output.stack!() };
+        if (hasBomb)
+          return {
+            [severity]: output.bombStack!({
+              mech1: isBombTrue ? output.bomb!() : output.fakeBomb!(),
+              mech2: output.stack!(),
+            }),
+          };
+        // Has nothing
+        return { [severity]: output.noDebuff!() };
+      },
+    },
+    {
+      id: 'DMU P4 Blizzard III Blowout',
+      // BAA4 Mana Charge signifies that the true/fake will be stored for later
+      // Indicated with boss buff 5CA Mana Charged and 5CC Blizzard Charged
+      type: 'StartsUsing',
+      netRegex: { id: 'BA95', source: 'Kefka', capture: false },
+      // Prevent triggering on earlier P1 or P4 triggers
+      condition: (data) => (data.grandCrossCount === 3 && data.isIceTrue !== undefined),
+      infoText: (data, _matches, output) => {
+        return data.isIceTrue ? output.trueIce!() : output.fakeIce!();
+      },
+      outputStrings: mysteryMagicIceOutputStrings,
+    },
+    {
+      id: 'DMU P4 Second Cursed Shriek',
+      type: 'GainsEffect',
+      netRegex: { effectId: '15A7', capture: true },
+      condition: (_data, matches) => parseFloat(matches.duration) > 68,
+      delaySeconds: (_data, matches) => parseFloat(matches.duration) - 3,
+      durationSeconds: 3,
+      suppressSeconds: 99999,
+      alertText: (data, _matches, output) => {
+        const is2ndTrue = data.areThirdDebuffsTrue;
+        if (is2ndTrue === undefined)
+          return;
+
+        const shriekPlayers = data.longShriekPlayers;
+        const players = shriekPlayers.map(
+          (player) => {
+            if (player === data.me)
+              return output.you!();
+            return data.party.member(player);
+          },
+        );
+        const msg = players?.join(', ');
+
+        if (shriekPlayers.includes(data.me))
+          return is2ndTrue
+            ? output.gazeOnPlayersYou!({ players: msg })
+            : output.fakeGazeOnPlayersYou!({ players: msg });
+        return is2ndTrue
+          ? output.gazeOnPlayers!({ players: msg })
+          : output.fakeGazeOnPlayers!({ players: msg });
+      },
+      outputStrings: {
+        you: {
+          en: 'YOU',
+          cn: '你，',
+          ko: '나',
+        },
+        fakeGazeOnPlayers: {
+          en: 'Face ${players}',
+          cn: '面向 ${players}',
+          ko: '${players} 바라보기',
+        },
+        gazeOnPlayers: {
+          en: 'Look Away from ${players}',
+          cn: '背对 ${players}',
+          ko: '${players}에게서 뒤돌기',
+        },
+        fakeGazeOnPlayersYou: {
+          en: 'Face ${players}',
+          cn: '面向 ${players}',
+          ko: '${players} 바라보기',
+        },
+        gazeOnPlayersYou: {
+          en: 'Look Away from ${players}',
+          cn: '背对 ${players}',
+          ko: '${players}에게서 뒤돌기',
+        },
+      },
+    },
+    {
+      id: 'DMU P4 Dynamic Fluid',
+      // Using the following as possible matches:
+      // 15A7 Cursed Shriek x2 69s
+      type: 'GainsEffect',
+      netRegex: { effectId: '15A7', capture: true },
+      condition: (_data, matches) => parseFloat(matches.duration) > 68,
+      delaySeconds: (_data, matches) => parseFloat(matches.duration),
+      durationSeconds: 6.9, // Time until Stray Spray
+      suppressSeconds: 99999,
+      alertText: (data, _matches, output) => {
+        const isFluidTrue = data.isFluidTrue;
+        if (isFluidTrue === undefined)
+          return;
+
+        return isFluidTrue ? output.donuts!() : output.puddles!();
+      },
+      outputStrings: {
+        donuts: {
+          en: 'Stack for Donuts',
+          de: 'Für Donuts sammeln',
+          fr: 'Packez-vous pour les donuts',
+          cn: '集合放月环',
+          ko: '모여서 도넛장판 피하기',
+          tc: '集合放月環',
+        },
+        puddles: Outputs.baitPuddles,
+      },
+    },
+    {
+      id: 'DMU P4 Mana Release',
+      // 5CA Mana Charged falls off ~5.4s prior to startsUsing
+      // 5CD Thunder Charged and 5CC Blizzard Charged fall off after subsequent
+      // Thrumming Thunder III and Blizzard III Blowout startsUsing
+      // This will need to be done while stacking donuts if Dynamic Fluid is true
+      // 6.7s castTime, but there is additional ~0.382 delay until tells
+      type: 'StartsUsing',
+      netRegex: { id: 'BAA5', source: 'Kefka', capture: true },
+      condition: (data) => {
+        return data.isIceTrue !== undefined && data.isThunderTrue !== undefined;
+      },
+      delaySeconds: (_data, matches) => parseFloat(matches.castTime) + 0.3,
+      infoText: (data, _matches, output) => {
+        const isThunderCharged = data.isThunderChargedTrue;
+        const isBlizzardCharged = data.isBlizzardChargedTrue;
+        const isFluidTrue = data.isFluidTrue;
+        const trueThunder = (isThunderCharged && data.isThunderTrue) ||
+          (!isThunderCharged && !data.isThunderTrue);
+        const trueIce = (isBlizzardCharged && data.isIceTrue) ||
+          (!isBlizzardCharged && !data.isIceTrue);
+
+        if (trueThunder) {
+          const tells = trueIce
+            ? output.trueIceTrueThunder!()
+            : output.fakeIceTrueThunder!();
+          return isFluidTrue
+            ? output.tellsDonut!({
+              tells: tells,
+              donut: output.inDonut!(),
+            })
+            : tells;
+        }
+        const tells = trueIce
+          ? output.trueIceFakeThunder!()
+          : output.fakeIceFakeThunder!();
+        return isFluidTrue
+          ? output.tellsDonut!({
+            tells: tells,
+            donut: output.inDonut!(),
+          })
+          : tells;
+      },
+      outputStrings: {
+        ...mysteryMagicIceThunderOutputStrings,
+        inDonut: {
+          en: 'In Donut',
+          cn: '月环内',
+          ko: '도넛 안으로',
+        },
+        tellsDonut: {
+          en: '${tells} + ${donut}',
+          cn: '${tells} + ${donut}',
+          ko: '${tells} + ${donut}',
+        },
+      },
+    },
+    {
+      id: 'DMU P4 Fake Stray Spray',
+      // Puddles have been baited, need to move away
+      // Using GainsEffect of 15AC Dynamic Fluid prevents early trigger
+      type: 'GainsEffect',
+      netRegex: { effectId: '15AC', capture: true },
+      condition: (data) => !data.isFluidTrue,
+      delaySeconds: (_data, matches) => parseFloat(matches.duration),
+      suppressSeconds: 99999,
+      response: Responses.moveAway('alert'),
     },
   ],
   timelineReplace: [
@@ -4117,7 +8854,6 @@ const triggerSet: TriggerSet<Data> = {
     },
     {
       'locale': 'cn',
-      'missingTranslations': true,
       'replaceSync': {
         'Black Hole': '黑洞',
         'Chaos': '卡奥斯',
@@ -4127,24 +8863,46 @@ const triggerSet: TriggerSet<Data> = {
         'Neo Exdeath': '新生艾克斯迪司',
       },
       'replaceText': {
+        '\\(castbar\\)': '(咏唱栏)',
+        '\\(Chaos': '(卡奥斯',
+        '\\(Exdeath': '(艾克斯迪司',
+        '\\(Pop Window\\)': '(引爆)',
+        '--accretion\\?--': '--混沌之泥土?--',
+        '--both targetable--': '--都可选中--',
+        '--Chaos untargetable\\?--': '--卡奥斯不可选中?--',
+        '--Exdeath untargetable\\?--': '--艾克斯迪司不可选中?--',
+        '--middle\\?--': '--中间?--',
+        '--numbers--': '--麻将--',
+        '--single target--': '--单目标--',
+        '--untargetable\\?--': '--不可选中?--',
+        'Accretion Earthquake': '混沌之泥土 地震',
         'Aero III Assault': '疼飕飕暴风',
+        'Aetherlink': '以太连接',
         'All Things Ending': '消灭之脚',
         'Ave Maria': '圣母颂',
         'Big Bang': '顶起',
         'Black Antilight': '死者暗黑光',
         'Black Hole': '黑洞',
         'Black Spark': '暗黑火花',
+        'Blackblood': '흑혈',
         'Blizzard III(?! Blowout)': '冰封',
         'Blizzard III Blowout': '扩大大冰封',
         'Bowels of Agony': '深层痛楚',
+        'Catastrophic Choice': '二选一的灾祟',
         'Celestriad': '三星',
+        'Chaotic Flare': '混沌核爆',
+        'Chaotic Flood': '混沌洪水',
+        'Chaotic Holy': '混沌神圣',
+        'Cyclone': '龙卷风',
         'Damning Edict': '诅咒敕令',
         'Death Bolt': '死亡落雷',
         'Death Bomb': '死亡爆弹',
         'Death Shriek': '死亡尖叫',
         'Death Surge': '死亡波涛',
         'Death Wave': '死亡波纹',
+        'Definition of Insanity': '重构',
         'Double-Trouble Trap': '连环环陷阱',
+        'Down for the Count': '击倒',
         '(?<! )Earthquake': '地震',
         'Edge of Death': '生死之境',
         'Explosion': '爆炸',
@@ -4152,9 +8910,13 @@ const triggerSet: TriggerSet<Data> = {
         '(?<! )Fire III': '爆炎',
         'Flagrant Fire III': '呼啦啦爆炎',
         '(?<! )Flare(?! )': '核爆',
+        'Flare Diffusion': '核爆扩散',
         '(?<! )Flood(?! )': '洪水',
         'Flood of Naught': '无之泛滥',
         'Forsaken(?! [BGN])': '遗弃末世',
+        'Forsaken Bonds': '遗弃末狱',
+        'Forsaken Ground': '遗弃末地',
+        'Forsaken Null': '遗弃末点',
         'Future\'s End': '未来终结',
         'Grand Cross': '大十字',
         'Graven Image': '众神之像',
@@ -4166,11 +8928,15 @@ const triggerSet: TriggerSet<Data> = {
         'Idyllic Will': '睡魔的神气',
         'Indolent Will': '懒惰的神气',
         'Indulgent Will': '圣母的神气',
+        'Inferno': '烈焰',
         'Intemperate Will': '扑杀的神气',
+        'Kefka Says': '闹哄哄魂击',
         'Knock Down': '轰击',
         'Latitudinal Implosion': '纬度聚爆',
         'Light of Judgment': '制裁之光',
         'Longitudinal Implosion': '经度聚爆',
+        'Look upon Me and Despair': '本色出演的我',
+        'Maddening Orchestra': '癫狂交响曲',
         'Mana Charge': '魔法储存',
         'Mana Release': '魔法放出',
         'Max': '放大',
@@ -4178,13 +8944,19 @@ const triggerSet: TriggerSet<Data> = {
         'Mystery Magic': '玄乎乎魔法',
         'Nothingness': '无之波动',
         'Past\'s End': '过去终结',
+        'Primordial Crust Quake': '混沌之土 地震',
         'Pulse Wave': '波动弹',
         '(?<![ h])Quake': '地震',
         'Revolting Ruin III': '恶狠狠毁荡',
+        'Shocking Impact': '重冲击',
         'Shockwave': '冲击波',
+        'Slap Happy': '响亮亮耳光',
         'Spelldriver': '咏唱危机·驱动',
         'Spellscatter': '咏唱危机·散碎',
         'Spellwave': '咏唱危机·波动',
+        'Stomp-a-Mole': '轰隆隆跺脚',
+        'Stray Apocalypse': '混沌末世',
+        'Stray Entropy': '混沌涡旋',
         'Stray Flames': '混沌之炎',
         'Stray Spray': '混沌之水',
         'Tele-trouncing': '唰啦啦传送',
@@ -4193,7 +8965,11 @@ const triggerSet: TriggerSet<Data> = {
         'Thrumming Thunder III': '劈啪啪暴雷',
         '(?<! )Thunder III': '暴雷',
         'Tornado': '龙卷',
+        'Trance': '幻化',
         'Trine': '异三角',
+        'Tsunami': '海啸',
+        'Ultima Blaster': '究极冲击波',
+        'Ultima Repeater': '连续究极',
         'Ultima Upsurge': '扑腾腾究极',
         'Ultimate Embrace': '终末双腕',
         'Umbra Smash': '本影爆碎',
