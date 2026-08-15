@@ -3,7 +3,7 @@ name: Create Release Artifact
 on:
   push:
     branches:
-      - main
+      - main-unnbird
     paths:
       - 'package.json'
   workflow_dispatch:
@@ -11,7 +11,7 @@ on:
 jobs:
   validate_tag:
     runs-on: ubuntu-latest
-    if: ${{ github.repository == 'OverlayPlugin/cactbot' }}
+    if: ${{ github.repository == 'Unnbird/cactbot' }}
     outputs:
       version: ${{ steps.get_version.outputs.version }}
       do_release: ${{ steps.check_tag.outputs.do_release }}
@@ -58,11 +58,13 @@ jobs:
   create_release:
     runs-on: windows-latest
     needs: [validate_tag, validate_versions]
+    permissions:
+      contents: write
     if: |
-      github.repository == 'OverlayPlugin/cactbot' &&
+      github.repository == 'Unnbird/cactbot' &&
       needs.validate_tag.outputs.do_release == 'true'
     env:
-      GITHUB_TOKEN: ${{ secrets.BOT_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
